@@ -1,0 +1,137 @@
+import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
+
+import '../api/odoo_face_attendance_client.dart';
+import '../models/session.dart';
+import '../services/device_service.dart';
+import '../services/face_recognition_service.dart';
+
+class EnrollmentScreen extends StatefulWidget {
+  const EnrollmentScreen({required this.session, super.key});
+
+  final MobileSession session;
+
+  @override
+  State<EnrollmentScreen> createState() => _EnrollmentScreenState();
+}
+
+class _EnrollmentScreenState extends State<EnrollmentScreen> {
+  final _faceService = FaceRecognitionService();
+  final _deviceService = DeviceService();
+  final List<List<double>> _embeddings = [];
+  CameraController? _camera;
+  String _message = 'Capture 3 clear face samples.';
+  bool _busy = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _initCamera();
+  }
+
+  Future<void> _initCamera() async {
+    try {
+      final cameras = await availableCameras();
+      final front = cameras.firstWhere(
+        (camera) => camera.lensDirection == CameraLensDirection.front,
+        orElse: () => cameras.first,
+      );
+      _camera = CameraController(front, ResolutionPreset.medium, enableAudio: false);
+      await _camera!.initialize();
+      if (!mounted) return;
+      setState(() => _busy = false);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _message = error.toString();
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _camera?.dispose();
+    _faceService.close();
+    super.dispose();
+  }
+
+  Future<void> _capture() async {
+    final camera = _camera;
+    if (camera == null || !camera.value.isInitialized) return;
+    setState(() => _busy = true);
+    try {
+      final image = await camera.takePicture();
+      final result = await _faceService.validateAndEmbed(image.path);
+      if (!result.valid) {
+        setState(() {
+          _message = result.error ?? 'Face validation failed';
+          _busy = false;
+        });
+        return;
+      }
+      _embeddings.add(result.embedding!);
+      if (_embeddings.length < 3) {
+        setState(() {
+          _message = '${_embeddings.length}/3 samples captured.';
+          _busy = false;
+        });
+        return;
+      }
+      final device = await _deviceService.identity();
+      final client = OdooFaceAttendanceClient(baseUrl: widget.session.baseUrl, db: widget.session.db, token: widget.session.token);
+      await client.enroll(
+        embeddings: _embeddings,
+        modelVersion: FaceRecognitionService.modelVersion,
+        deviceId: device.id,
+        qualityScore: 1.0,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Face enrollment completed.')));
+      Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _message = error.toString();
+        _busy = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Enroll Face')),
+      body: Column(
+        children: [
+          Expanded(
+            child: Container(
+              width: double.infinity,
+              color: Colors.black,
+              child: _camera == null || !_camera!.value.isInitialized
+                  ? Center(child: Text(_message, style: const TextStyle(color: Colors.white)))
+                  : CameraPreview(_camera!),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(_message, textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                FilledButton.icon(
+                  onPressed: _busy ? null : _capture,
+                  icon: _busy
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.camera_alt),
+                  label: Text(_embeddings.length >= 2 ? 'Finish Enrollment' : 'Capture Sample'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}

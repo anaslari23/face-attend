@@ -1,0 +1,70 @@
+<odoo>
+    <record id="face_attendance_template_view_tree" model="ir.ui.view">
+        <field name="name">face.attendance.template.tree</field>
+        <field name="model">face.attendance.template</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="employee_id"/>
+                <field name="model_version"/>
+                <field name="device_uid"/>
+                <field name="quality_score"/>
+                <field name="active"/>
+                <field name="create_date"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="face_attendance_log_view_tree" model="ir.ui.view">
+        <field name="name">face.attendance.log.tree</field>
+        <field name="model">face.attendance.log</field>
+        <field name="arch" type="xml">
+            <list decoration-success="accepted" decoration-danger="not accepted">
+                <field name="create_date"/>
+                <field name="employee_id"/>
+                <field name="punch_type"/>
+                <field name="match_score"/>
+                <field name="threshold"/>
+                <field name="accepted"/>
+                <field name="failure_reason"/>
+                <field name="device_uid"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="face_attendance_log_view_form" model="ir.ui.view">
+        <field name="name">face.attendance.log.form</field>
+        <field name="model">face.attendance.log</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <group>
+                        <field name="employee_id"/>
+                        <field name="attendance_id"/>
+                        <field name="punch_type"/>
+                        <field name="accepted"/>
+                        <field name="match_score"/>
+                        <field name="threshold"/>
+                        <field name="failure_reason"/>
+                        <field name="device_uid"/>
+                        <field name="app_version"/>
+                    </group>
+                    <group string="Payload">
+                        <field name="raw_payload" nolabel="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="face_attendance_template_action" model="ir.actions.act_window">
+        <field name="name">Face Templates</field>
+        <field name="res_model">face.attendance.template</field>
+        <field name="view_mode">list</field>
+    </record>
+
+    <record id="face_attendance_log_action" model="ir.actions.act_window">
+        <field name="name">Face Attendance Logs</field>
+        <field name="res_model">face.attendance.log</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

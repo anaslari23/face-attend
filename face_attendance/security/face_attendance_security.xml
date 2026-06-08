@@ -1,0 +1,10 @@
+<odoo>
+    <record id="group_face_attendance_user" model="res.groups">
+        <field name="name">Face Attendance User</field>
+    </record>
+
+    <record id="group_face_attendance_manager" model="res.groups">
+        <field name="name">Face Attendance Manager</field>
+        <field name="implied_ids" eval="[(4, ref('face_attendance.group_face_attendance_user'))]"/>
+    </record>
+</odoo>

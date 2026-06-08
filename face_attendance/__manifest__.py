@@ -1,0 +1,19 @@
+{
+    "name": "Face Attendance",
+    "summary": "Employee phone face attendance integrated with HR Attendance",
+    "version": "19.0.1.0.0",
+    "category": "Human Resources/Attendances",
+    "author": "Primacy Infotech Pvt. Ltd.",
+    "license": "LGPL-3",
+    "depends": ["hr", "hr_attendance"],
+    "data": [
+        "security/face_attendance_security.xml",
+        "security/ir.model.access.csv",
+        "views/face_attendance_views.xml",
+        "views/hr_employee_views.xml",
+        "views/hr_attendance_views.xml",
+        "views/menu.xml",
+    ],
+    "application": True,
+    "installable": True,
+}

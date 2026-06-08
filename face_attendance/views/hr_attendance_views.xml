@@ -1,0 +1,17 @@
+<odoo>
+    <record id="hr_attendance_face_form_inherit" model="ir.ui.view">
+        <field name="name">hr.attendance.face.form.inherit</field>
+        <field name="model">hr.attendance</field>
+        <field name="inherit_id" ref="hr_attendance.hr_attendance_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet/group" position="inside">
+                <group string="Face Recognition">
+                    <field name="recognition_method" readonly="1"/>
+                    <field name="recognition_confidence" readonly="1"/>
+                    <field name="face_device_uid" readonly="1"/>
+                    <field name="face_log_id" readonly="1"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+</odoo>

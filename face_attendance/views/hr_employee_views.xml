@@ -1,0 +1,41 @@
+<odoo>
+    <record id="hr_employee_face_attendance_form_inherit" model="ir.ui.view">
+        <field name="name">hr.employee.face.attendance.form.inherit</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//sheet/notebook" position="inside">
+                <page string="Face Attendance">
+                    <group>
+                        <field name="face_registered" readonly="1"/>
+                        <field name="face_registered_date" readonly="1"/>
+                        <field name="face_enrollment_count" readonly="1"/>
+                    </group>
+                    <button name="action_reset_face_enrollment" type="object" string="Reset Face Enrollment" class="btn-secondary"/>
+                    <group string="Templates">
+                        <field name="face_template_ids" readonly="1" nolabel="1">
+                            <list>
+                                <field name="model_version"/>
+                                <field name="device_uid"/>
+                                <field name="quality_score"/>
+                                <field name="active"/>
+                                <field name="create_date"/>
+                            </list>
+                        </field>
+                    </group>
+                    <group string="Devices">
+                        <field name="face_device_ids" readonly="1" nolabel="1">
+                            <list>
+                                <field name="name"/>
+                                <field name="device_uid"/>
+                                <field name="active"/>
+                                <field name="last_seen_at"/>
+                                <field name="token_expires_at"/>
+                            </list>
+                        </field>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+</odoo>

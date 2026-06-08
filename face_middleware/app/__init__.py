@@ -1,0 +1,1 @@
+"""FaceAttend FastAPI middleware package."""

@@ -61,7 +61,9 @@ class FaceAttendanceController(http.Controller):
             return self._json_response({"error": "db, login, password and device_id are required"}, status=400)
 
         try:
-            uid = request.session.authenticate(db, login, password)
+            credential = {'login': login, 'password': password, 'type': 'password'}
+            auth_info = request.session.authenticate(request.env, credential)
+            uid = auth_info['uid']
         except Exception:
             _logger.exception("Face attendance login failed")
             return self._json_response({"error": "invalid_credentials"}, status=401)

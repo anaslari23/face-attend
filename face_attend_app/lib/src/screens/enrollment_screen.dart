@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 
 import '../api/odoo_face_attendance_client.dart';
 import '../models/session.dart';
+import '../screens/result_screen.dart';
 import '../services/device_service.dart';
 import '../services/face_recognition_service.dart';
+import '../widgets/face_scan_view.dart';
 
 class EnrollmentScreen extends StatefulWidget {
   const EnrollmentScreen({required this.session, super.key});
@@ -19,8 +21,9 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
   final _faceService = FaceRecognitionService();
   final _deviceService = DeviceService();
   final List<List<double>> _embeddings = [];
+  static const _targetSamples = 3;
   CameraController? _camera;
-  String _message = 'Capture 3 clear face samples.';
+  String _message = 'Scan your face to register.';
   bool _busy = true;
 
   @override
@@ -71,9 +74,9 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
         return;
       }
       _embeddings.add(result.embedding!);
-      if (_embeddings.length < 3) {
+      if (_embeddings.length < _targetSamples) {
         setState(() {
-          _message = '${_embeddings.length}/3 samples captured.';
+          _message = '${_embeddings.length}/$_targetSamples samples captured.';
           _busy = false;
         });
         return;
@@ -87,8 +90,16 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
         qualityScore: 1.0,
       );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Face enrollment completed.')));
-      Navigator.of(context).pop();
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => const AttendanceResultScreen(
+            success: true,
+            title: 'Face registered',
+            message: 'Your face registration was completed successfully.',
+            showRetry: false,
+          ),
+        ),
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -105,12 +116,12 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
       body: Column(
         children: [
           Expanded(
-            child: Container(
-              width: double.infinity,
-              color: Colors.black,
-              child: _camera == null || !_camera!.value.isInitialized
-                  ? Center(child: Text(_message, style: const TextStyle(color: Colors.white)))
-                  : CameraPreview(_camera!),
+            child: FaceScanView(
+              camera: _camera,
+              message: _message,
+              progress: _embeddings.length,
+              target: _targetSamples,
+              prompt: 'Move slowly and keep your face inside the frame.',
             ),
           ),
           Padding(
@@ -125,7 +136,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
                   icon: _busy
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.camera_alt),
-                  label: Text(_embeddings.length >= 2 ? 'Finish Enrollment' : 'Capture Sample'),
+                  label: Text(_embeddings.length >= _targetSamples - 1 ? 'Finish Registration' : 'Capture Sample'),
                 ),
               ],
             ),

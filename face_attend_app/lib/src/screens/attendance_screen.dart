@@ -3,8 +3,10 @@ import 'package:flutter/material.dart';
 
 import '../api/odoo_face_attendance_client.dart';
 import '../models/session.dart';
+import '../screens/result_screen.dart';
 import '../services/device_service.dart';
 import '../services/face_recognition_service.dart';
+import '../widgets/face_scan_view.dart';
 
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({required this.session, super.key});
@@ -95,13 +97,24 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         failureReason: accepted ? null : 'Face match below threshold',
       );
       if (!mounted) return;
-      final text = punch.accepted
-          ? punch.punchType == 'check_out'
-              ? 'Checked out successfully.'
-              : 'Checked in successfully.'
-          : 'Face match failed.';
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
-      Navigator.of(context).pop();
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AttendanceResultScreen(
+            success: punch.accepted,
+            title: punch.accepted
+                ? punch.punchType == 'check_out'
+                    ? 'Checked out'
+                    : 'Checked in'
+                : 'Face match failed',
+            message: punch.accepted
+                ? 'Attendance was recorded successfully.'
+                : 'Your face did not match the registered template.',
+            time: DateTime.now(),
+            confidence: score,
+            showRetry: !punch.accepted,
+          ),
+        ),
+      );
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -123,10 +136,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       failureReason: reason,
     );
     if (!mounted) return;
-    setState(() {
-      _message = reason;
-      _busy = false;
-    });
+    setState(() => _busy = false);
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AttendanceResultScreen(
+          success: false,
+          title: 'Scan rejected',
+          message: reason,
+        ),
+      ),
+    );
   }
 
   @override
@@ -136,12 +155,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       body: Column(
         children: [
           Expanded(
-            child: Container(
-              width: double.infinity,
-              color: Colors.black,
-              child: _camera == null || !_camera!.value.isInitialized
-                  ? Center(child: Text(_message, style: const TextStyle(color: Colors.white)))
-                  : CameraPreview(_camera!),
+            child: FaceScanView(
+              camera: _camera,
+              message: _message,
+              prompt: 'Blink once, look straight, then scan.',
             ),
           ),
           Padding(

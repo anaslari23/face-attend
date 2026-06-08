@@ -1,0 +1,8 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_face_attendance_template_user,face.attendance.template.user,model_face_attendance_template,odoo_admin.group_face_attendance_user,1,0,0,0
+access_face_attendance_template_manager,face.attendance.template.manager,model_face_attendance_template,odoo_admin.group_face_attendance_manager,1,1,1,1
+access_face_attendance_device_user,face.attendance.device.user,model_face_attendance_device,odoo_admin.group_face_attendance_user,1,0,0,0
+access_face_attendance_device_manager,face.attendance.device.manager,model_face_attendance_device,odoo_admin.group_face_attendance_manager,1,1,1,1
+access_face_attendance_log_user,face.attendance.log.user,model_face_attendance_log,odoo_admin.group_face_attendance_user,1,0,0,0
+access_face_attendance_log_manager,face.attendance.log.manager,model_face_attendance_log,odoo_admin.group_face_attendance_manager,1,1,1,1
+access_face_attendance_config_manager,face.attendance.config.manager,model_face_attendance_config,odoo_admin.group_face_attendance_manager,1,1,1,1

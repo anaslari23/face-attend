@@ -17,6 +17,30 @@ class FaceAttendanceTemplate(models.Model):
         return [(record.id, "%s - %s" % (record.employee_id.name, record.model_version)) for record in self]
 
 
+class FaceAttendanceConfig(models.Model):
+    _name = "face.attendance.config"
+    _description = "Face Attendance Configuration"
+    _rec_name = "name"
+
+    name = fields.Char(required=True, default="Default Face Attendance")
+    middleware_url = fields.Char(required=True, default="http://127.0.0.1:8019")
+    api_key = fields.Char(copy=False)
+    confidence_threshold = fields.Float(default=0.45)
+    liveness_required = fields.Boolean(default=True)
+    anti_spoofing_required = fields.Boolean(default=False)
+    active = fields.Boolean(default=True)
+    notes = fields.Text()
+
+    def action_open_logs(self):
+        self.ensure_one()
+        return {
+            "type": "ir.actions.act_window",
+            "name": "Face Attendance Logs",
+            "res_model": "face.attendance.log",
+            "view_mode": "list,form,pivot,graph",
+        }
+
+
 class FaceAttendanceDevice(models.Model):
     _name = "face.attendance.device"
     _description = "Face Attendance Mobile Device"

@@ -5,6 +5,7 @@ import 'src/models/session.dart';
 import 'src/screens/attendance_screen.dart';
 import 'src/screens/enrollment_screen.dart';
 import 'src/screens/login_screen.dart';
+import 'src/screens/settings_screen.dart';
 import 'src/services/secure_session_store.dart';
 
 void main() {
@@ -111,9 +112,18 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.refresh),
           ),
           IconButton(
-            onPressed: widget.onLogout,
-            tooltip: 'Logout',
-            icon: const Icon(Icons.logout),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => SettingsScreen(
+                    session: widget.session,
+                    onLogout: widget.onLogout,
+                  ),
+                ),
+              );
+            },
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings),
           ),
         ],
       ),
@@ -161,7 +171,22 @@ class _HomeScreenState extends State<HomeScreen> {
                 _refresh();
               },
               icon: const Icon(Icons.person_add_alt_1),
-              label: const Text('Enroll My Face'),
+              label: const Text('Register Face'),
+            ),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => SettingsScreen(
+                      session: widget.session,
+                      onLogout: widget.onLogout,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.settings),
+              label: const Text('Settings'),
             ),
           ],
         ),

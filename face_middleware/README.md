@@ -39,6 +39,18 @@ FACE_MIDDLEWARE_EMBEDDING_BACKEND=dev
 
 The dev backend is deterministic and is not suitable for production.
 
+## PostgreSQL + pgvector
+
+Production embeddings are stored in PostgreSQL with the `pgvector` extension.
+Create a database and user, then set:
+
+```bash
+FACE_MIDDLEWARE_DATABASE_URL=postgresql://face_attend:face_attend@127.0.0.1:5433/face_attend
+```
+
+The middleware creates the `vector` extension, embedding table, and HNSW index
+on startup when the configured database user has permission.
+
 ## Example Requests
 
 ```bash
@@ -61,9 +73,9 @@ curl -X POST http://localhost:8019/match \
   -F file=@scan.jpg
 ```
 
-## Storage
+## Anti-Spoofing
 
-The first implementation stores centroid embeddings in a local SQLite database
-at `./data/face_middleware.sqlite3`. This keeps Phase 1 runnable on a local
-machine before PostgreSQL/pgvector is introduced. The repository API is isolated
-so PostgreSQL/pgvector can replace SQLite without changing the FastAPI routes.
+`FACE_MIDDLEWARE_ANTI_SPOOFING_ENABLED=false` keeps anti-spoofing disabled.
+When enabled with `FACE_MIDDLEWARE_ALLOW_ANTISPOOF_STUB=true`, the service keeps
+the interface active without blocking requests. Set the stub flag to `false`
+only after a production anti-spoofing model has been integrated.

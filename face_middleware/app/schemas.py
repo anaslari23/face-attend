@@ -7,6 +7,7 @@ class HealthResponse(BaseModel):
     status: str
     embedding_backend: str
     model_loaded: bool
+    database_connected: bool
     embedding_count: int
     antispoofing: str
 

@@ -56,6 +56,11 @@ class SettingsScreen extends StatelessWidget {
                   label: 'Database',
                   value: session.db,
                 ),
+                _SettingsTile(
+                  icon: Icons.hub,
+                  label: 'Middleware URL',
+                  value: session.middlewareUrl,
+                ),
               ],
             ),
             const SizedBox(height: 24),

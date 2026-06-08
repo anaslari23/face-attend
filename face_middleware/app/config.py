@@ -9,10 +9,11 @@ class Settings(BaseSettings):
 
     api_key: str = "change-me"
     embedding_backend: str = Field(default="insightface", pattern="^(insightface|dev)$")
-    database_path: str = "./data/face_middleware.sqlite3"
+    database_url: str = "postgresql://face_attend:face_attend@127.0.0.1:5432/face_attend"
     match_threshold: float = 0.45
     detection_threshold: float = 0.6
     max_file_bytes: int = 5 * 1024 * 1024
+    anti_spoofing_enabled: bool = False
     allow_antispoof_stub: bool = True
 
 

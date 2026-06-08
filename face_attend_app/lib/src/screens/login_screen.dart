@@ -19,6 +19,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final _db = TextEditingController();
   final _login = TextEditingController();
   final _password = TextEditingController();
+  final _middlewareUrl = TextEditingController(text: 'http://127.0.0.1:8019');
+  final _middlewareApiKey = TextEditingController(text: 'change-me');
   final _deviceService = DeviceService();
   bool _loading = false;
   bool _fetchingDb = false;
@@ -30,6 +32,8 @@ class _LoginScreenState extends State<LoginScreen> {
     _db.dispose();
     _login.dispose();
     _password.dispose();
+    _middlewareUrl.dispose();
+    _middlewareApiKey.dispose();
     super.dispose();
   }
 
@@ -69,6 +73,8 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _password.text,
         deviceId: device.id,
         deviceName: device.name,
+        middlewareUrl: _middlewareUrl.text.trim(),
+        middlewareApiKey: _middlewareApiKey.text.trim(),
       );
       widget.onLoggedIn(session);
     } catch (error) {
@@ -107,7 +113,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 12),
                       if (_availableDbs != null && _availableDbs!.isNotEmpty)
                         DropdownButtonFormField<String>(
-                          value: _availableDbs!.contains(_db.text) ? _db.text : null,
+                          initialValue: _availableDbs!.contains(_db.text) ? _db.text : null,
                           decoration: InputDecoration(
                             labelText: 'Database',
                             border: const OutlineInputBorder(),
@@ -161,6 +167,20 @@ class _LoginScreenState extends State<LoginScreen> {
                       TextFormField(
                         controller: _password,
                         decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder()),
+                        obscureText: true,
+                        validator: _required,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _middlewareUrl,
+                        decoration: const InputDecoration(labelText: 'Middleware URL', border: OutlineInputBorder()),
+                        keyboardType: TextInputType.url,
+                        validator: _required,
+                      ),
+                      const SizedBox(height: 12),
+                      TextFormField(
+                        controller: _middlewareApiKey,
+                        decoration: const InputDecoration(labelText: 'Middleware API Key', border: OutlineInputBorder()),
                         obscureText: true,
                         validator: _required,
                       ),

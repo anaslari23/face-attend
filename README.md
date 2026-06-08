@@ -44,7 +44,7 @@ flutter pub get
 flutter run
 ```
 
-The current face embedding service includes a deterministic development fallback so the app/API flow can be tested before adding a production TFLite model. Add the real model under `face_attend_app/assets/models/` and replace the fallback in `FaceRecognitionService` with model inference before production.
+Face recognition runs through the FastAPI middleware. The Flutter app performs lightweight on-device face validation, then uploads captured images to the middleware for InsightFace registration and matching.
 
 ## Implemented API
 

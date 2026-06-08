@@ -1,6 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
+import '../api/face_middleware_client.dart';
 import '../api/odoo_face_attendance_client.dart';
 import '../models/session.dart';
 import '../screens/result_screen.dart';
@@ -20,7 +21,7 @@ class EnrollmentScreen extends StatefulWidget {
 class _EnrollmentScreenState extends State<EnrollmentScreen> {
   final _faceService = FaceRecognitionService();
   final _deviceService = DeviceService();
-  final List<List<double>> _embeddings = [];
+  final List<String> _imagePaths = [];
   static const _targetSamples = 3;
   CameraController? _camera;
   String _message = 'Scan your face to register.';
@@ -44,6 +45,10 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
       if (!mounted) return;
       setState(() => _busy = false);
     } catch (error) {
+      for (final path in _imagePaths) {
+        await deleteImageQuietly(path);
+      }
+      _imagePaths.clear();
       if (!mounted) return;
       setState(() {
         _busy = false;
@@ -65,30 +70,42 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     setState(() => _busy = true);
     try {
       final image = await camera.takePicture();
-      final result = await _faceService.validateAndEmbed(image.path);
+      final result = await _faceService.validateImage(image.path);
       if (!result.valid) {
+        await deleteImageQuietly(image.path);
         setState(() {
           _message = result.error ?? 'Face validation failed';
           _busy = false;
         });
         return;
       }
-      _embeddings.add(result.embedding!);
-      if (_embeddings.length < _targetSamples) {
+      _imagePaths.add(image.path);
+      if (_imagePaths.length < _targetSamples) {
         setState(() {
-          _message = '${_embeddings.length}/$_targetSamples samples captured.';
+          _message = '${_imagePaths.length}/$_targetSamples samples captured.';
           _busy = false;
         });
         return;
       }
-      final device = await _deviceService.identity();
+      await _deviceService.identity();
+      final middleware = FaceMiddlewareClient(
+        baseUrl: widget.session.middlewareUrl,
+        apiKey: widget.session.middlewareApiKey,
+      );
+      await middleware.register(
+        employeeId: widget.session.employee.id,
+        employeeName: widget.session.employee.name,
+        imagePaths: _imagePaths,
+      );
       final client = OdooFaceAttendanceClient(baseUrl: widget.session.baseUrl, db: widget.session.db, token: widget.session.token);
       await client.enroll(
-        embeddings: _embeddings,
-        modelVersion: FaceRecognitionService.modelVersion,
-        deviceId: device.id,
-        qualityScore: 1.0,
+        modelVersion: 'insightface-buffalo-l',
+        deviceId: (await _deviceService.identity()).id,
+        qualityScore: result.qualityScore,
       );
+      for (final path in _imagePaths) {
+        await deleteImageQuietly(path);
+      }
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute(
@@ -119,7 +136,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
             child: FaceScanView(
               camera: _camera,
               message: _message,
-              progress: _embeddings.length,
+              progress: _imagePaths.length,
               target: _targetSamples,
               prompt: 'Move slowly and keep your face inside the frame.',
             ),
@@ -136,7 +153,7 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
                   icon: _busy
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.camera_alt),
-                  label: Text(_embeddings.length >= _targetSamples - 1 ? 'Finish Registration' : 'Capture Sample'),
+                  label: Text(_imagePaths.length >= _targetSamples - 1 ? 'Finish Registration' : 'Capture Sample'),
                 ),
               ],
             ),

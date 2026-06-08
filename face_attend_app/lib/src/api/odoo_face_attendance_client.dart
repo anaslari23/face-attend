@@ -46,6 +46,8 @@ class OdooFaceAttendanceClient {
     required String password,
     required String deviceId,
     required String deviceName,
+    required String middlewareUrl,
+    required String middlewareApiKey,
   }) async {
     final payload = await _post(
       '/face_attendance/login',
@@ -63,6 +65,8 @@ class OdooFaceAttendanceClient {
       baseUrl: baseUrl,
       db: db,
       token: payload['token'] as String,
+      middlewareUrl: middlewareUrl,
+      middlewareApiKey: middlewareApiKey,
       employee: EmployeeProfile.fromJson(payload['employee'] as Map<String, dynamic>),
     );
   }
@@ -80,7 +84,6 @@ class OdooFaceAttendanceClient {
   }
 
   Future<EmployeeProfile> enroll({
-    required List<List<double>> embeddings,
     required String modelVersion,
     required String deviceId,
     required double qualityScore,
@@ -88,7 +91,7 @@ class OdooFaceAttendanceClient {
     final payload = await _post(
       '/face_attendance/enroll',
       {
-        'embeddings': embeddings,
+        'middleware_registered': true,
         'model_version': modelVersion,
         'device_id': deviceId,
         'quality_score': qualityScore,
@@ -148,7 +151,7 @@ class OdooFaceAttendanceClient {
     return {
       'Content-Type': 'application/json',
       if (authenticated && token != null) 'Authorization': 'Bearer $token',
-      if (currentDb != null) 'X-Odoo-Database': currentDb,
+      ...?(currentDb == null ? null : {'X-Odoo-Database': currentDb}),
     };
   }
 

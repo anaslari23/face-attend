@@ -33,12 +33,16 @@ class MobileSession {
     required this.baseUrl,
     required this.db,
     required this.token,
+    required this.middlewareUrl,
+    required this.middlewareApiKey,
     required this.employee,
   });
 
   final String baseUrl;
   final String db;
   final String token;
+  final String middlewareUrl;
+  final String middlewareApiKey;
   final EmployeeProfile employee;
 
   factory MobileSession.fromJson(Map<String, dynamic> json) {
@@ -46,6 +50,8 @@ class MobileSession {
       baseUrl: json['base_url'] as String,
       db: json['db'] as String,
       token: json['token'] as String,
+      middlewareUrl: json['middleware_url'] as String? ?? 'http://127.0.0.1:8019',
+      middlewareApiKey: json['middleware_api_key'] as String? ?? 'change-me',
       employee: EmployeeProfile.fromJson(json['employee'] as Map<String, dynamic>),
     );
   }
@@ -54,6 +60,8 @@ class MobileSession {
         'base_url': baseUrl,
         'db': db,
         'token': token,
+        'middleware_url': middlewareUrl,
+        'middleware_api_key': middlewareApiKey,
         'employee': employee.toJson(),
       };
 }

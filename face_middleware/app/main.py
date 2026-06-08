@@ -3,12 +3,12 @@ from datetime import datetime, timezone
 import numpy as np
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 
+from .anti_spoofing import AntiSpoofingService
 from .config import Settings, get_settings
-from .dependencies import get_face_engine, get_repository
+from .dependencies import get_anti_spoofing_service, get_face_engine, get_repository
 from .errors import FacePipelineError, as_http_error
 from .face_engine import FaceEngine
 from .image_processing import decode_jpeg
-from .matching import best_match
 from .repository import EmbeddingRepository
 from .schemas import DeleteResponse, HealthResponse, MatchEmployee, MatchResponse, RegisterResponse
 from .security import require_api_key
@@ -21,13 +21,17 @@ def health(
     settings: Settings = Depends(get_settings),
     repository: EmbeddingRepository = Depends(get_repository),
     engine: FaceEngine = Depends(get_face_engine),
+    anti_spoofing: AntiSpoofingService = Depends(get_anti_spoofing_service),
 ) -> HealthResponse:
+    database_connected = repository.health()
+    embedding_count = repository.count() if database_connected else 0
     return HealthResponse(
-        status="ok" if engine.model_loaded else "degraded",
+        status="ok" if engine.model_loaded and database_connected else "degraded",
         embedding_backend=settings.embedding_backend,
         model_loaded=engine.model_loaded,
-        embedding_count=repository.count(),
-        antispoofing="stub" if settings.allow_antispoof_stub else "disabled",
+        database_connected=database_connected,
+        embedding_count=embedding_count,
+        antispoofing=anti_spoofing.mode,
     )
 
 
@@ -39,6 +43,7 @@ async def register_employee(
     settings: Settings = Depends(get_settings),
     repository: EmbeddingRepository = Depends(get_repository),
     engine: FaceEngine = Depends(get_face_engine),
+    anti_spoofing: AntiSpoofingService = Depends(get_anti_spoofing_service),
 ) -> RegisterResponse:
     if len(files) < 3:
         raise HTTPException(
@@ -50,6 +55,7 @@ async def register_employee(
     for upload in files:
         try:
             image = decode_jpeg(await upload.read(), max_file_bytes=settings.max_file_bytes)
+            anti_spoofing.validate(image)
             embeddings.append(engine.embed(image))
         except FacePipelineError as error:
             raise as_http_error(error) from error
@@ -80,16 +86,18 @@ async def match_employee(
     settings: Settings = Depends(get_settings),
     repository: EmbeddingRepository = Depends(get_repository),
     engine: FaceEngine = Depends(get_face_engine),
+    anti_spoofing: AntiSpoofingService = Depends(get_anti_spoofing_service),
 ) -> MatchResponse:
     try:
         image = decode_jpeg(await file.read(), max_file_bytes=settings.max_file_bytes)
+        anti_spoofing.validate(image)
         query_embedding = engine.embed(image)
     except FacePipelineError as error:
         raise as_http_error(error) from error
 
-    employee, score = best_match(query_embedding, repository.list_embeddings())
+    candidates = repository.nearest(query_embedding, limit=1)
     timestamp = datetime.now(timezone.utc)
-    if employee is None:
+    if not candidates:
         return MatchResponse(
             matched=False,
             confidence=0.0,
@@ -97,6 +105,8 @@ async def match_employee(
             timestamp=timestamp,
             reason="no_registered_embeddings",
         )
+    employee = candidates[0]
+    score = employee.score or 0.0
     if score < settings.match_threshold:
         return MatchResponse(
             matched=False,

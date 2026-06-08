@@ -109,18 +109,20 @@ class FaceAttendanceController(http.Controller):
             return error
         body = self._body()
         embeddings = body.get("embeddings") or []
+        middleware_registered = bool(body.get("middleware_registered"))
         model_version = body.get("model_version") or self._config("face_attendance.model_version", "mobilefacenet-v1")
         device_id = body.get("device_id")
         quality_score = float(body.get("quality_score") or 0.0)
 
-        if len(embeddings) < 3:
+        if not middleware_registered and len(embeddings) < 3:
             return self._json_response({"error": "at_least_three_embeddings_required"}, status=400)
 
         normalized = []
-        for vector in embeddings:
-            if not isinstance(vector, list) or not vector:
-                return self._json_response({"error": "invalid_embedding"}, status=400)
-            normalized.append([float(value) for value in vector])
+        if not middleware_registered:
+            for vector in embeddings:
+                if not isinstance(vector, list) or not vector:
+                    return self._json_response({"error": "invalid_embedding"}, status=400)
+                normalized.append([float(value) for value in vector])
 
         request.env["face.attendance.template"].sudo().search(
             [("employee_id", "=", employee.id), ("active", "=", True)]

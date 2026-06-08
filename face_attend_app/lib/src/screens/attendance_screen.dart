@@ -1,6 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
+import '../api/face_middleware_client.dart';
 import '../api/odoo_face_attendance_client.dart';
 import '../models/session.dart';
 import '../screens/result_screen.dart';
@@ -22,8 +23,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   final _deviceService = DeviceService();
   late final OdooFaceAttendanceClient _client;
   CameraController? _camera;
-  FaceTemplate? _template;
-  String _message = 'Loading face template...';
+  String _message = 'Loading scanner...';
   bool _busy = true;
 
   @override
@@ -35,14 +35,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Future<void> _init() async {
     try {
-      _template = await _client.template();
-      if (_template == null) {
-        setState(() {
-          _message = 'Enroll your face before attendance scan.';
-          _busy = false;
-        });
-        return;
-      }
       final cameras = await availableCameras();
       final front = cameras.firstWhere(
         (camera) => camera.lensDirection == CameraLensDirection.front,
@@ -73,28 +65,41 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Future<void> _scan() async {
     final camera = _camera;
-    final template = _template;
-    if (camera == null || template == null || !camera.value.isInitialized) return;
+    if (camera == null || !camera.value.isInitialized) return;
     setState(() => _busy = true);
+    String? imagePath;
     try {
       final image = await camera.takePicture();
-      final result = await _faceService.validateAndEmbed(image.path);
+      imagePath = image.path;
+      final result = await _faceService.validateImage(imagePath);
       if (!result.valid) {
-        await _submitRejected(template.threshold, result.error ?? 'Face validation failed');
+        await deleteImageQuietly(imagePath);
+        imagePath = null;
+        await _submitRejected(0.45, result.error ?? 'Face validation failed');
         return;
       }
 
-      final score = _faceService.compare(result.embedding!, template.embeddings);
-      final accepted = score >= template.threshold;
+      final middleware = FaceMiddlewareClient(
+        baseUrl: widget.session.middlewareUrl,
+        apiKey: widget.session.middlewareApiKey,
+      );
+      final match = await middleware.match(imagePath: imagePath);
+      await deleteImageQuietly(imagePath);
+      imagePath = null;
+      final accepted = match.matched && match.employeeId == widget.session.employee.id;
       final device = await _deviceService.identity();
       final appVersion = await _deviceService.appVersion();
       final punch = await _client.punch(
         accepted: accepted,
-        matchScore: score,
-        threshold: template.threshold,
+        matchScore: match.confidence,
+        threshold: match.threshold,
         deviceId: device.id,
         appVersion: appVersion,
-        failureReason: accepted ? null : 'Face match below threshold',
+        failureReason: accepted
+            ? null
+            : match.matched
+                ? 'Matched a different employee'
+                : match.reason ?? 'Face match below threshold',
       );
       if (!mounted) return;
       await Navigator.of(context).push(
@@ -108,14 +113,21 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 : 'Face match failed',
             message: punch.accepted
                 ? 'Attendance was recorded successfully.'
-                : 'Your face did not match the registered template.',
+                : accepted
+                    ? 'Attendance was recorded successfully.'
+                    : match.matched
+                        ? 'The scan matched a different employee.'
+                        : match.reason ?? 'Your face did not match the registered template.',
             time: DateTime.now(),
-            confidence: score,
+            confidence: match.confidence,
             showRetry: !punch.accepted,
           ),
         ),
       );
     } catch (error) {
+      if (imagePath != null) {
+        await deleteImageQuietly(imagePath);
+      }
       if (!mounted) return;
       setState(() {
         _message = error.toString();
@@ -169,7 +181,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 Text(_message, textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 FilledButton.icon(
-                  onPressed: _busy || _template == null ? null : _scan,
+                  onPressed: _busy ? null : _scan,
                   icon: _busy
                       ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.face),

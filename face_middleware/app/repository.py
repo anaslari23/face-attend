@@ -1,9 +1,8 @@
-import json
-import sqlite3
 from dataclasses import dataclass
-from pathlib import Path
+from typing import Protocol
 
 import numpy as np
+import psycopg
 
 
 @dataclass(frozen=True)
@@ -11,67 +10,123 @@ class EmployeeEmbedding:
     employee_id: int
     employee_name: str | None
     embedding: np.ndarray
+    score: float | None = None
 
 
-class EmbeddingRepository:
-    def __init__(self, database_path: str):
-        self.database_path = Path(database_path)
-        self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        self._init_db()
+class EmbeddingRepository(Protocol):
+    def init_storage(self) -> None:
+        ...
 
-    def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(self.database_path)
+    def upsert(self, employee_id: int, employee_name: str | None, embedding: np.ndarray) -> None:
+        ...
 
-    def _init_db(self) -> None:
+    def delete(self, employee_id: int) -> bool:
+        ...
+
+    def count(self) -> int:
+        ...
+
+    def health(self) -> bool:
+        ...
+
+    def nearest(self, query: np.ndarray, limit: int = 1) -> list[EmployeeEmbedding]:
+        ...
+
+
+class PgVectorEmbeddingRepository:
+    def __init__(self, database_url: str):
+        self.database_url = database_url
+        self._storage_ready = False
+
+    def _connect(self) -> psycopg.Connection:
+        return psycopg.connect(self.database_url)
+
+    def init_storage(self) -> None:
+        if self._storage_ready:
+            return
         with self._connect() as conn:
+            conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS employee_embeddings (
-                    employee_id INTEGER PRIMARY KEY,
+                    employee_id BIGINT PRIMARY KEY,
                     employee_name TEXT,
-                    embedding_json TEXT NOT NULL,
-                    embedding_dimension INTEGER NOT NULL,
-                    registered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    embedding VECTOR(512) NOT NULL,
+                    registered_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS employee_embeddings_embedding_hnsw
+                ON employee_embeddings
+                USING hnsw (embedding vector_cosine_ops)
+                """
+            )
+        self._storage_ready = True
 
     def upsert(self, employee_id: int, employee_name: str | None, embedding: np.ndarray) -> None:
-        payload = json.dumps([float(value) for value in embedding.tolist()])
+        self.init_storage()
+        vector = _pgvector_literal(embedding)
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO employee_embeddings (
-                    employee_id, employee_name, embedding_json, embedding_dimension, registered_at
-                )
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(employee_id) DO UPDATE SET
-                    employee_name = excluded.employee_name,
-                    embedding_json = excluded.embedding_json,
-                    embedding_dimension = excluded.embedding_dimension,
-                    registered_at = CURRENT_TIMESTAMP
+                INSERT INTO employee_embeddings (employee_id, employee_name, embedding, registered_at)
+                VALUES (%s, %s, %s::vector, NOW())
+                ON CONFLICT (employee_id) DO UPDATE SET
+                    employee_name = EXCLUDED.employee_name,
+                    embedding = EXCLUDED.embedding,
+                    registered_at = NOW()
                 """,
-                (employee_id, employee_name, payload, int(embedding.shape[0])),
+                (employee_id, employee_name, vector),
             )
 
     def delete(self, employee_id: int) -> bool:
+        self.init_storage()
         with self._connect() as conn:
-            cursor = conn.execute("DELETE FROM employee_embeddings WHERE employee_id = ?", (employee_id,))
+            cursor = conn.execute("DELETE FROM employee_embeddings WHERE employee_id = %s", (employee_id,))
             return cursor.rowcount > 0
 
     def count(self) -> int:
+        self.init_storage()
         with self._connect() as conn:
             row = conn.execute("SELECT COUNT(*) FROM employee_embeddings").fetchone()
             return int(row[0])
 
-    def list_embeddings(self) -> list[EmployeeEmbedding]:
+    def health(self) -> bool:
+        try:
+            self.init_storage()
+            return True
+        except psycopg.Error:
+            return False
+
+    def nearest(self, query: np.ndarray, limit: int = 1) -> list[EmployeeEmbedding]:
+        self.init_storage()
+        vector = _pgvector_literal(query)
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT employee_id, employee_name, embedding_json FROM employee_embeddings"
+                """
+                SELECT employee_id, employee_name, 1 - (embedding <=> %s::vector) AS score
+                FROM employee_embeddings
+                ORDER BY embedding <=> %s::vector
+                LIMIT %s
+                """,
+                (vector, vector, limit),
             ).fetchall()
 
-        records: list[EmployeeEmbedding] = []
-        for employee_id, employee_name, embedding_json in rows:
-            embedding = np.array(json.loads(embedding_json), dtype=np.float32)
-            records.append(EmployeeEmbedding(employee_id=employee_id, employee_name=employee_name, embedding=embedding))
-        return records
+        return [
+            EmployeeEmbedding(
+                employee_id=int(employee_id),
+                employee_name=employee_name,
+                embedding=query,
+                score=float(score),
+            )
+            for employee_id, employee_name, score in rows
+        ]
+
+
+def _pgvector_literal(embedding: np.ndarray) -> str:
+    values = [float(value) for value in embedding.astype(np.float32).tolist()]
+    if len(values) != 512:
+        raise ValueError(f"pgvector storage expects 512 dimensions, got {len(values)}")
+    return "[" + ",".join(f"{value:.8f}" for value in values) + "]"

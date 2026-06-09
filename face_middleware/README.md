@@ -62,9 +62,7 @@ curl -X POST http://localhost:8019/register \
   -H 'X-API-Key: change-me' \
   -F employee_id=1 \
   -F employee_name='Demo Employee' \
-  -F files=@frame1.jpg \
-  -F files=@frame2.jpg \
-  -F files=@frame3.jpg
+  -F files=@face.jpg
 ```
 
 ```bash

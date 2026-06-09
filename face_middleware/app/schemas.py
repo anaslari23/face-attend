@@ -33,6 +33,31 @@ class MatchResponse(BaseModel):
     timestamp: datetime
     employee: MatchEmployee | None = None
     reason: str | None = None
+    second_best_confidence: float | None = Field(default=None, ge=-1.0, le=1.0)
+
+
+class FaceBox(BaseModel):
+    left: float
+    top: float
+    right: float
+    bottom: float
+
+
+class MultiFaceMatch(BaseModel):
+    matched: bool
+    confidence: float = Field(ge=-1.0, le=1.0)
+    threshold: float
+    bbox: FaceBox
+    employee: MatchEmployee | None = None
+    reason: str | None = None
+    second_best_confidence: float | None = Field(default=None, ge=-1.0, le=1.0)
+
+
+class MultiMatchResponse(BaseModel):
+    timestamp: datetime
+    image_width: int
+    image_height: int
+    faces: list[MultiFaceMatch]
 
 
 class DeleteResponse(BaseModel):

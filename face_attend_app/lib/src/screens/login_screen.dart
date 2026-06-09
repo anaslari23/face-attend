@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../api/odoo_face_attendance_client.dart';
 import '../models/session.dart';
-import '../services/device_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({required this.onLoggedIn, super.key});
@@ -15,13 +14,9 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _baseUrl = TextEditingController(text: 'https://your-odoo-domain.com');
+  final _baseUrl = TextEditingController(text: 'http://192.168.1.61:8069');
   final _db = TextEditingController();
-  final _login = TextEditingController();
-  final _password = TextEditingController();
-  final _middlewareUrl = TextEditingController(text: 'http://127.0.0.1:8019');
-  final _middlewareApiKey = TextEditingController(text: 'change-me');
-  final _deviceService = DeviceService();
+  final _setupCode = TextEditingController();
   bool _loading = false;
   bool _fetchingDb = false;
   List<String>? _availableDbs;
@@ -30,10 +25,7 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _baseUrl.dispose();
     _db.dispose();
-    _login.dispose();
-    _password.dispose();
-    _middlewareUrl.dispose();
-    _middlewareApiKey.dispose();
+    _setupCode.dispose();
     super.dispose();
   }
 
@@ -54,11 +46,11 @@ class _LoginScreenState extends State<LoginScreen> {
           SnackBar(content: Text('Found ${dbs.length} databases')),
         );
       }
-    } catch (e) {
+    } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to fetch DBs: $e')));
+        ).showSnackBar(SnackBar(content: Text('Failed to fetch DBs: $error')));
       }
     } finally {
       if (mounted) setState(() => _fetchingDb = false);
@@ -69,17 +61,16 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
-      final device = await _deviceService.identity();
       final client = OdooFaceAttendanceClient(baseUrl: _baseUrl.text.trim());
-      final session = await client.login(
+      final session = await client.setupScanner(
         db: _db.text.trim(),
-        login: _login.text.trim(),
-        password: _password.text,
-        deviceId: device.id,
-        deviceName: device.name,
-        middlewareUrl: _middlewareUrl.text.trim(),
-        middlewareApiKey: _middlewareApiKey.text.trim(),
+        setupCode: _setupCode.text.trim(),
       );
+      await OdooFaceAttendanceClient(
+        baseUrl: session.baseUrl,
+        db: session.db,
+        token: session.token,
+      ).status();
       widget.onLoggedIn(session);
     } catch (error) {
       if (!mounted) return;
@@ -100,12 +91,10 @@ class _LoginScreenState extends State<LoginScreen> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(24),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
+              constraints: const BoxConstraints(maxWidth: 420),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Logo & Header
                   Container(
                     width: 72,
                     height: 72,
@@ -119,7 +108,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     alignment: Alignment.center,
                     child: const Icon(
-                      Icons.face_retouching_natural,
+                      Icons.qr_code_scanner,
                       size: 38,
                       color: Colors.white,
                     ),
@@ -132,12 +121,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       fontSize: 26,
                       fontWeight: FontWeight.w900,
                       color: Color(0xFF1E1E1E),
-                      letterSpacing: -0.5,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Biometric Enterprise Portal',
+                    'Shared Scanner Setup',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 13,
@@ -146,8 +134,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                   const SizedBox(height: 32),
-
-                  // Floating Login Card
                   Card(
                     margin: EdgeInsets.zero,
                     child: Padding(
@@ -158,7 +144,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             Text(
-                              'SIGN IN',
+                              'SCANNER CONFIGURATION',
                               style: TextStyle(
                                 fontSize: 11,
                                 fontWeight: FontWeight.w800,
@@ -167,19 +153,11 @@ class _LoginScreenState extends State<LoginScreen> {
                               ),
                             ),
                             const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _baseUrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Odoo Server URL',
-                                prefixIcon: Icon(Icons.dns, size: 20),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(
-                                    Radius.circular(12),
-                                  ),
-                                ),
-                              ),
+                            _field(
+                              _baseUrl,
+                              'Odoo Server URL',
+                              Icons.dns,
                               keyboardType: TextInputType.url,
-                              validator: _required,
                             ),
                             const SizedBox(height: 16),
                             if (_availableDbs != null &&
@@ -188,149 +166,71 @@ class _LoginScreenState extends State<LoginScreen> {
                                 initialValue: _availableDbs!.contains(_db.text)
                                     ? _db.text
                                     : null,
-                                decoration: InputDecoration(
-                                  labelText: 'Database',
-                                  prefixIcon: const Icon(
-                                    Icons.storage,
-                                    size: 20,
-                                  ),
-                                  border: const OutlineInputBorder(
-                                    borderRadius: BorderRadius.all(
-                                      Radius.circular(12),
+                                decoration:
+                                    _decoration(
+                                      'Database',
+                                      Icons.storage,
+                                    ).copyWith(
+                                      suffixIcon: IconButton(
+                                        icon: const Icon(Icons.sync, size: 20),
+                                        onPressed: _fetchingDb
+                                            ? null
+                                            : _fetchDbs,
+                                        tooltip: 'Refresh Databases',
+                                      ),
                                     ),
-                                  ),
-                                  suffixIcon: _fetchingDb
-                                      ? const Padding(
-                                          padding: EdgeInsets.all(12),
-                                          child: SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          ),
-                                        )
-                                      : IconButton(
-                                          icon: const Icon(
-                                            Icons.sync,
-                                            size: 20,
-                                          ),
-                                          onPressed: _fetchDbs,
-                                          tooltip: 'Refresh Databases',
-                                        ),
-                                ),
-                                items: _availableDbs!.map((db) {
-                                  return DropdownMenuItem(
-                                    value: db,
-                                    child: Text(db),
-                                  );
-                                }).toList(),
+                                items: _availableDbs!
+                                    .map(
+                                      (db) => DropdownMenuItem(
+                                        value: db,
+                                        child: Text(db),
+                                      ),
+                                    )
+                                    .toList(),
                                 onChanged: (val) {
-                                  if (val != null) {
-                                    _db.text = val;
-                                  }
+                                  if (val != null) _db.text = val;
                                 },
                                 validator: _required,
                               )
                             else
                               TextFormField(
                                 controller: _db,
-                                decoration: InputDecoration(
-                                  labelText: 'Database Name',
-                                  prefixIcon: const Icon(
-                                    Icons.storage,
-                                    size: 20,
-                                  ),
-                                  border: const OutlineInputBorder(
-                                    borderRadius: BorderRadius.all(
-                                      Radius.circular(12),
-                                    ),
-                                  ),
-                                  suffixIcon: _fetchingDb
-                                      ? const Padding(
-                                          padding: EdgeInsets.all(12),
-                                          child: SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
+                                decoration:
+                                    _decoration(
+                                      'Database Name',
+                                      Icons.storage,
+                                    ).copyWith(
+                                      suffixIcon: _fetchingDb
+                                          ? const Padding(
+                                              padding: EdgeInsets.all(12),
+                                              child: SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                              ),
+                                            )
+                                          : IconButton(
+                                              icon: const Icon(
+                                                Icons.search,
+                                                size: 20,
+                                              ),
+                                              onPressed: _fetchDbs,
+                                              tooltip: 'Fetch Databases',
                                             ),
-                                          ),
-                                        )
-                                      : IconButton(
-                                          icon: const Icon(
-                                            Icons.search,
-                                            size: 20,
-                                          ),
-                                          onPressed: _fetchDbs,
-                                          tooltip: 'Fetch Databases',
-                                        ),
-                                ),
+                                    ),
                                 validator: _required,
                               ),
                             const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _login,
-                              decoration: const InputDecoration(
-                                labelText: 'Email Address',
-                                prefixIcon: Icon(Icons.email, size: 20),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(
-                                    Radius.circular(12),
-                                  ),
-                                ),
-                              ),
-                              keyboardType: TextInputType.emailAddress,
-                              validator: _required,
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _password,
-                              decoration: const InputDecoration(
-                                labelText: 'Password',
-                                prefixIcon: Icon(Icons.lock, size: 20),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(
-                                    Radius.circular(12),
-                                  ),
-                                ),
-                              ),
+                            _field(
+                              _setupCode,
+                              'Scanner Setup Code',
+                              Icons.vpn_key,
                               obscureText: true,
-                              validator: _required,
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _middlewareUrl,
-                              decoration: const InputDecoration(
-                                labelText: 'Middleware URL',
-                                prefixIcon: Icon(Icons.hub, size: 20),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(
-                                    Radius.circular(12),
-                                  ),
-                                ),
-                              ),
-                              keyboardType: TextInputType.url,
-                              validator: _required,
-                            ),
-                            const SizedBox(height: 16),
-                            TextFormField(
-                              controller: _middlewareApiKey,
-                              decoration: const InputDecoration(
-                                labelText: 'Middleware API Key',
-                                prefixIcon: Icon(Icons.key, size: 20),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.all(
-                                    Radius.circular(12),
-                                  ),
-                                ),
-                              ),
-                              obscureText: true,
-                              validator: _required,
                             ),
                             const SizedBox(height: 24),
-
-                            // Gradient Sign-In Button
                             Container(
                               height: 52,
                               decoration: BoxDecoration(
@@ -343,15 +243,6 @@ class _LoginScreenState extends State<LoginScreen> {
                                   end: Alignment.centerRight,
                                 ),
                                 borderRadius: BorderRadius.circular(12),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: const Color(
-                                      0xFFFF6B35,
-                                    ).withValues(alpha: 0.3),
-                                    blurRadius: 10,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
                               ),
                               child: ElevatedButton(
                                 style: ElevatedButton.styleFrom(
@@ -371,24 +262,13 @@ class _LoginScreenState extends State<LoginScreen> {
                                           color: Colors.white,
                                         ),
                                       )
-                                    : const Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.center,
-                                        children: [
-                                          Icon(
-                                            Icons.login,
-                                            color: Colors.white,
-                                          ),
-                                          SizedBox(width: 8),
-                                          Text(
-                                            'Sign In',
-                                            style: TextStyle(
-                                              fontSize: 16,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.white,
-                                            ),
-                                          ),
-                                        ],
+                                    : const Text(
+                                        'Save Scanner',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white,
+                                        ),
                                       ),
                               ),
                             ),
@@ -402,6 +282,33 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  TextFormField _field(
+    TextEditingController controller,
+    String label,
+    IconData icon, {
+    bool obscureText = false,
+    TextInputType? keyboardType,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      decoration: _decoration(label, icon),
+      obscureText: obscureText,
+      keyboardType: keyboardType,
+      validator: validator ?? _required,
+    );
+  }
+
+  InputDecoration _decoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, size: 20),
+      border: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(12)),
       ),
     );
   }

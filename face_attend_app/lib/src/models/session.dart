@@ -21,11 +21,11 @@ class EmployeeProfile {
   }
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'department': department,
-        'face_registered': faceRegistered,
-      };
+    'id': id,
+    'name': name,
+    'department': department,
+    'face_registered': faceRegistered,
+  };
 }
 
 class MobileSession {
@@ -35,7 +35,8 @@ class MobileSession {
     required this.token,
     required this.middlewareUrl,
     required this.middlewareApiKey,
-    required this.employee,
+    required this.deviceId,
+    required this.deviceName,
   });
 
   final String baseUrl;
@@ -43,27 +44,31 @@ class MobileSession {
   final String token;
   final String middlewareUrl;
   final String middlewareApiKey;
-  final EmployeeProfile employee;
+  final String deviceId;
+  final String deviceName;
 
   factory MobileSession.fromJson(Map<String, dynamic> json) {
     return MobileSession(
       baseUrl: json['base_url'] as String,
       db: json['db'] as String,
       token: json['token'] as String,
-      middlewareUrl: json['middleware_url'] as String? ?? 'http://127.0.0.1:8019',
+      middlewareUrl:
+          json['middleware_url'] as String? ?? 'http://127.0.0.1:8019',
       middlewareApiKey: json['middleware_api_key'] as String? ?? 'change-me',
-      employee: EmployeeProfile.fromJson(json['employee'] as Map<String, dynamic>),
+      deviceId: json['device_id'] as String? ?? '',
+      deviceName: json['device_name'] as String? ?? 'Shared Scanner',
     );
   }
 
   Map<String, dynamic> toJson() => {
-        'base_url': baseUrl,
-        'db': db,
-        'token': token,
-        'middleware_url': middlewareUrl,
-        'middleware_api_key': middlewareApiKey,
-        'employee': employee.toJson(),
-      };
+    'base_url': baseUrl,
+    'db': db,
+    'token': token,
+    'middleware_url': middlewareUrl,
+    'middleware_api_key': middlewareApiKey,
+    'device_id': deviceId,
+    'device_name': deviceName,
+  };
 }
 
 class AttendanceStatus {
@@ -81,7 +86,9 @@ class AttendanceStatus {
     return AttendanceStatus(
       checkedIn: json['checked_in'] == true,
       attendanceId: json['attendance_id'] as int?,
-      checkIn: json['check_in'] == null ? null : DateTime.tryParse(json['check_in'].toString()),
+      checkIn: json['check_in'] == null
+          ? null
+          : DateTime.tryParse(json['check_in'].toString()),
     );
   }
 }
@@ -102,7 +109,9 @@ class FaceTemplate {
   factory FaceTemplate.fromJson(Map<String, dynamic> json) {
     final rawEmbeddings = (json['embeddings'] as List<dynamic>? ?? [])
         .map(
-          (embedding) => (embedding as List<dynamic>).map((value) => (value as num).toDouble()).toList(),
+          (embedding) => (embedding as List<dynamic>)
+              .map((value) => (value as num).toDouble())
+              .toList(),
         )
         .toList();
     return FaceTemplate(
@@ -119,12 +128,14 @@ class PunchResult {
     required this.accepted,
     this.punchType,
     this.logId,
+    this.employee,
     this.status,
   });
 
   final bool accepted;
   final String? punchType;
   final int? logId;
+  final EmployeeProfile? employee;
   final AttendanceStatus? status;
 
   factory PunchResult.fromJson(Map<String, dynamic> json) {
@@ -132,9 +143,14 @@ class PunchResult {
       accepted: json['accepted'] == true,
       punchType: json['punch_type'] as String?,
       logId: json['log_id'] as int?,
+      employee: json['employee'] == null
+          ? null
+          : EmployeeProfile.fromJson(json['employee'] as Map<String, dynamic>),
       status: json['attendance'] == null
           ? null
-          : AttendanceStatus.fromJson(json['attendance'] as Map<String, dynamic>),
+          : AttendanceStatus.fromJson(
+              json['attendance'] as Map<String, dynamic>,
+            ),
     );
   }
 }

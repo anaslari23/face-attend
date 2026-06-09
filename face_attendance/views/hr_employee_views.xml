@@ -5,13 +5,16 @@
         <field name="inherit_id" ref="hr.view_employee_form"/>
         <field name="arch" type="xml">
             <xpath expr="//sheet/notebook" position="inside">
-                <page string="Face Attendance">
+                <page string="Face Attendance" groups="face_attendance.group_face_attendance_user">
                     <group>
                         <field name="face_registered" readonly="1"/>
                         <field name="face_registered_date" readonly="1"/>
                         <field name="face_enrollment_count" readonly="1"/>
                     </group>
-                    <button name="action_reset_face_enrollment" type="object" string="Reset Face Enrollment" class="btn-secondary"/>
+                    <group>
+                        <button name="action_sync_face_to_middleware" type="object" string="Sync Avatar To Middleware" class="btn-primary"/>
+                        <button name="action_reset_face_enrollment" type="object" string="Reset Face Enrollment" class="btn-secondary"/>
+                    </group>
                     <group string="Templates">
                         <field name="face_template_ids" readonly="1" nolabel="1">
                             <list>

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'src/api/odoo_face_attendance_client.dart';
 import 'src/models/session.dart';
 import 'src/screens/attendance_screen.dart';
-import 'src/screens/enrollment_screen.dart';
 import 'src/screens/login_screen.dart';
 import 'src/screens/settings_screen.dart';
 import 'src/services/secure_session_store.dart';
@@ -31,12 +30,22 @@ class _FaceAttendAppState extends State<FaceAttendApp> {
   }
 
   Future<void> _restore() async {
-    final restored = await _sessionStore.read();
+    var restored = await _sessionStore.read();
+    if (restored != null && _usesLoopbackHost(restored.middlewareUrl)) {
+      await _sessionStore.clear();
+      restored = null;
+    }
     if (!mounted) return;
     setState(() {
       _session = restored;
       _loading = false;
     });
+  }
+
+  bool _usesLoopbackHost(String url) {
+    final uri = Uri.tryParse(url);
+    final host = uri?.host.toLowerCase();
+    return host == '127.0.0.1' || host == 'localhost' || host == '::1';
   }
 
   Future<void> _setSession(MobileSession session) async {
@@ -126,14 +135,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final employee = widget.session.employee;
-    final initials = employee.name
-        .split(' ')
-        .map((e) => e.isNotEmpty ? e[0] : '')
-        .take(2)
-        .join()
-        .toUpperCase();
-
     return Scaffold(
       appBar: AppBar(
         title: Row(
@@ -190,7 +191,6 @@ class _HomeScreenState extends State<HomeScreen> {
           child: ListView(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             children: [
-              // Employee Profile Card
               Card(
                 margin: EdgeInsets.zero,
                 child: Padding(
@@ -209,13 +209,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         ),
                         alignment: Alignment.center,
-                        child: Text(
-                          initials,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
+                        child: const Icon(
+                          Icons.qr_code_scanner,
+                          color: Colors.white,
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -224,7 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              employee.name,
+                              widget.session.deviceName,
                               style: const TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
@@ -233,7 +229,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              employee.department ?? 'No Department',
+                              'Shared attendance scanner',
                               style: TextStyle(
                                 fontSize: 13,
                                 color: Colors.grey.shade600,
@@ -252,13 +248,11 @@ class _HomeScreenState extends State<HomeScreen> {
               FutureBuilder<AttendanceStatus>(
                 future: _statusFuture,
                 builder: (context, snapshot) {
-                  final status = snapshot.data;
                   return _StatusPanel(
                     loading:
                         snapshot.connectionState == ConnectionState.waiting,
-                    checkedIn: status?.checkedIn ?? false,
-                    checkIn: status?.checkIn,
-                    faceRegistered: employee.faceRegistered,
+                    online: snapshot.hasData,
+                    scannerId: widget.session.deviceId,
                   );
                 },
               ),
@@ -278,28 +272,13 @@ class _HomeScreenState extends State<HomeScreen> {
               // Quick action buttons designed as modern dashboard cards
               _QuickActionCard(
                 title: 'Scan Attendance',
-                subtitle: 'Verify your face to check in or out',
+                subtitle: 'Identify employee and check in or out',
                 icon: Icons.qr_code_scanner,
                 iconColor: const Color(0xFFFF6B35),
                 onTap: () async {
                   await Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => AttendanceScreen(session: widget.session),
-                    ),
-                  );
-                  _refresh();
-                },
-              ),
-              const SizedBox(height: 12),
-              _QuickActionCard(
-                title: 'Register Face Template',
-                subtitle: 'Capture 3 samples for your biometric ID',
-                icon: Icons.face,
-                iconColor: const Color(0xFFFFC107),
-                onTap: () async {
-                  await Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => EnrollmentScreen(session: widget.session),
                     ),
                   );
                   _refresh();
@@ -400,19 +379,17 @@ class _QuickActionCard extends StatelessWidget {
 class _StatusPanel extends StatelessWidget {
   const _StatusPanel({
     required this.loading,
-    required this.checkedIn,
-    required this.faceRegistered,
-    this.checkIn,
+    required this.online,
+    required this.scannerId,
   });
 
   final bool loading;
-  final bool checkedIn;
-  final bool faceRegistered;
-  final DateTime? checkIn;
+  final bool online;
+  final String scannerId;
 
   @override
   Widget build(BuildContext context) {
-    final statusColor = checkedIn
+    final statusColor = online
         ? const Color(0xFF2ECC71)
         : const Color(0xFF95A5A6);
     return Card(
@@ -442,10 +419,10 @@ class _StatusPanel extends StatelessWidget {
                 const SizedBox(width: 12),
                 Text(
                   loading
-                      ? 'Checking status...'
-                      : checkedIn
-                      ? 'CURRENTLY CHECKED IN'
-                      : 'CURRENTLY CHECKED OUT',
+                      ? 'Checking scanner...'
+                      : online
+                      ? 'SCANNER READY'
+                      : 'SCANNER OFFLINE',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
@@ -455,46 +432,20 @@ class _StatusPanel extends StatelessWidget {
                 ),
               ],
             ),
-            if (checkIn != null) ...[
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Icon(
-                    Icons.access_time_filled,
-                    size: 16,
-                    color: Colors.grey.shade600,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Checked in at: ${checkIn!.toLocal().toString().substring(11, 16)}',
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
-                  ),
-                ],
-              ),
-            ],
             const Divider(height: 24, thickness: 0.5),
             Row(
               children: [
-                Icon(
-                  faceRegistered
-                      ? Icons.verified_user
-                      : Icons.warning_amber_rounded,
-                  color: faceRegistered
-                      ? const Color(0xFF2ECC71)
-                      : const Color(0xFFFF9800),
-                  size: 20,
-                ),
+                Icon(Icons.devices, color: const Color(0xFFFF6B35), size: 20),
                 const SizedBox(width: 8),
-                Text(
-                  faceRegistered
-                      ? 'Biometric template registered'
-                      : 'Enrollment required',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                    color: faceRegistered
-                        ? Colors.grey.shade800
-                        : const Color(0xFFFF9800),
+                Expanded(
+                  child: Text(
+                    'Device ID: $scannerId',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.grey.shade800,
+                    ),
                   ),
                 ),
               ],

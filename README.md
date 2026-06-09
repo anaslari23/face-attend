@@ -6,7 +6,7 @@ Employee-phone face attendance system with Flutter on-device face flow and Odoo 
 
 - `face_attend_app/` - Flutter mobile app.
 - `face_middleware/` - FastAPI face-recognition middleware.
-- `odoo_admin/` - Odoo addon for admin screens, mobile API, enrollment records, audit logs, and `hr.attendance` integration.
+- `face_attendance/` - Odoo addon for admin screens, mobile API, enrollment records, audit logs, and `hr.attendance` integration.
 
 ## Middleware Setup
 
@@ -27,7 +27,7 @@ FACE_MIDDLEWARE_EMBEDDING_BACKEND=dev uvicorn app.main:app --reload --port 8019
 
 ## Odoo Setup
 
-1. Copy or symlink `odoo_admin` into an Odoo addons path.
+1. Copy or symlink `face_attendance` into an Odoo addons path.
 2. Update the Odoo app list.
 3. Install **Face Attendance**.
 4. Assign HR/admin users to **Face Attendance Manager**.

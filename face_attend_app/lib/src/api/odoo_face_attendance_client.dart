@@ -18,19 +18,17 @@ class OdooFaceAttendanceClient {
   final http.Client _http;
 
   Future<List<String>> listDatabases() async {
-    final payload = await _post(
-      '/web/database/list',
-      {
-        'jsonrpc': '2.0',
-        'method': 'call',
-        'params': <String, dynamic>{},
-      },
-      authenticated: false,
-    );
+    final payload = await _post('/web/database/list', {
+      'jsonrpc': '2.0',
+      'method': 'call',
+      'params': <String, dynamic>{},
+    }, authenticated: false);
     if (payload.containsKey('error')) {
       throw FaceAttendanceApiException(
         statusCode: 400,
-        message: payload['error']['data']?['message']?.toString() ?? 'Failed to fetch databases',
+        message:
+            payload['error']['data']?['message']?.toString() ??
+            'Failed to fetch databases',
       );
     }
     if (payload.containsKey('result')) {
@@ -40,85 +38,54 @@ class OdooFaceAttendanceClient {
     return [];
   }
 
-  Future<MobileSession> login({
+  Future<MobileSession> setupScanner({
     required String db,
-    required String login,
-    required String password,
-    required String deviceId,
-    required String deviceName,
-    required String middlewareUrl,
-    required String middlewareApiKey,
+    required String setupCode,
   }) async {
     final payload = await _post(
-      '/face_attendance/login',
-      {
-        'db': db,
-        'login': login,
-        'password': password,
-        'device_id': deviceId,
-        'device_name': deviceName,
-      },
+      '/face_attendance/scanner/setup',
+      {'setup_code': setupCode},
       authenticated: false,
       extraDb: db,
     );
+    final device = payload['device'] as Map<String, dynamic>;
+    final middleware = payload['middleware'] as Map<String, dynamic>;
     return MobileSession(
       baseUrl: baseUrl,
       db: db,
       token: payload['token'] as String,
-      middlewareUrl: middlewareUrl,
-      middlewareApiKey: middlewareApiKey,
-      employee: EmployeeProfile.fromJson(payload['employee'] as Map<String, dynamic>),
+      middlewareUrl: middleware['url'] as String,
+      middlewareApiKey: middleware['api_key'] as String,
+      deviceId: device['device_uid'] as String,
+      deviceName: device['name'] as String,
     );
   }
 
   Future<AttendanceStatus> status() async {
     final payload = await _get('/face_attendance/status');
-    return AttendanceStatus.fromJson(payload['attendance'] as Map<String, dynamic>);
-  }
-
-  Future<FaceTemplate?> template() async {
-    final payload = await _get('/face_attendance/template');
-    final template = payload['template'];
-    if (template == null) return null;
-    return FaceTemplate.fromJson(template as Map<String, dynamic>);
-  }
-
-  Future<EmployeeProfile> enroll({
-    required String modelVersion,
-    required String deviceId,
-    required double qualityScore,
-  }) async {
-    final payload = await _post(
-      '/face_attendance/enroll',
-      {
-        'middleware_registered': true,
-        'model_version': modelVersion,
-        'device_id': deviceId,
-        'quality_score': qualityScore,
-      },
+    return AttendanceStatus.fromJson(
+      payload['attendance'] as Map<String, dynamic>,
     );
-    return EmployeeProfile.fromJson(payload['employee'] as Map<String, dynamic>);
   }
 
   Future<PunchResult> punch({
     required bool accepted,
+    int? matchedEmployeeId,
     required double matchScore,
     required double threshold,
     required String deviceId,
     required String appVersion,
     String? failureReason,
   }) async {
-    final payload = await _post(
-      '/face_attendance/punch',
-      {
-        'accepted': accepted,
-        'match_score': matchScore,
-        'threshold': threshold,
-        'device_id': deviceId,
-        'app_version': appVersion,
-        'failure_reason': failureReason,
-      },
-    );
+    final payload = await _post('/face_attendance/punch', {
+      'accepted': accepted,
+      'matched_employee_id': matchedEmployeeId,
+      'match_score': matchScore,
+      'threshold': threshold,
+      'device_id': deviceId,
+      'app_version': appVersion,
+      'failure_reason': failureReason,
+    });
     return PunchResult.fromJson(payload);
   }
 
@@ -142,7 +109,9 @@ class OdooFaceAttendanceClient {
   }
 
   Uri _uri(String path) {
-    final normalizedBase = baseUrl.endsWith('/') ? baseUrl.substring(0, baseUrl.length - 1) : baseUrl;
+    final normalizedBase = baseUrl.endsWith('/')
+        ? baseUrl.substring(0, baseUrl.length - 1)
+        : baseUrl;
     return Uri.parse('$normalizedBase$path');
   }
 
@@ -164,7 +133,8 @@ class OdooFaceAttendanceClient {
       } catch (_) {
         // Not JSON, probably HTML error page
         if (response.body.isNotEmpty) {
-          errorMessage += ': ${response.body.substring(0, response.body.length > 100 ? 100 : response.body.length)}';
+          errorMessage +=
+              ': ${response.body.substring(0, response.body.length > 100 ? 100 : response.body.length)}';
         }
       }
       throw FaceAttendanceApiException(
@@ -172,9 +142,9 @@ class OdooFaceAttendanceClient {
         message: errorMessage,
       );
     }
-    
+
     if (response.body.isEmpty) return <String, dynamic>{};
-    
+
     try {
       return jsonDecode(response.body) as Map<String, dynamic>;
     } catch (e) {
@@ -187,7 +157,10 @@ class OdooFaceAttendanceClient {
 }
 
 class FaceAttendanceApiException implements Exception {
-  const FaceAttendanceApiException({required this.statusCode, required this.message});
+  const FaceAttendanceApiException({
+    required this.statusCode,
+    required this.message,
+  });
 
   final int statusCode;
   final String message;

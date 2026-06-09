@@ -9,8 +9,17 @@ from .dependencies import get_anti_spoofing_service, get_face_engine, get_reposi
 from .errors import FacePipelineError, as_http_error
 from .face_engine import FaceEngine
 from .image_processing import decode_jpeg
-from .repository import EmbeddingRepository
-from .schemas import DeleteResponse, HealthResponse, MatchEmployee, MatchResponse, RegisterResponse
+from .repository import EmbeddingRepository, EmployeeEmbedding
+from .schemas import (
+    DeleteResponse,
+    FaceBox,
+    HealthResponse,
+    MatchEmployee,
+    MatchResponse,
+    MultiFaceMatch,
+    MultiMatchResponse,
+    RegisterResponse,
+)
 from .security import require_api_key
 
 app = FastAPI(title="FaceAttend Middleware", version="0.1.0")
@@ -35,6 +44,25 @@ def health(
     )
 
 
+def _match_embedding(
+    query_embedding: np.ndarray,
+    settings: Settings,
+    repository: EmbeddingRepository,
+) -> tuple[bool, EmployeeEmbedding | None, float, str | None, float | None]:
+    candidates = repository.nearest(query_embedding, limit=2)
+    if not candidates:
+        return False, None, 0.0, "no_registered_embeddings", None
+
+    employee = candidates[0]
+    score = employee.score or 0.0
+    second_best_score = candidates[1].score if len(candidates) > 1 else None
+    if score < settings.match_threshold:
+        return False, employee, score, "below_threshold", second_best_score
+    if second_best_score is not None and (score - second_best_score) < settings.ambiguity_margin:
+        return False, employee, score, "ambiguous_match", second_best_score
+    return True, employee, score, None, second_best_score
+
+
 @app.post("/register", response_model=RegisterResponse, dependencies=[Depends(require_api_key)])
 async def register_employee(
     employee_id: int = Form(...),
@@ -45,10 +73,10 @@ async def register_employee(
     engine: FaceEngine = Depends(get_face_engine),
     anti_spoofing: AntiSpoofingService = Depends(get_anti_spoofing_service),
 ) -> RegisterResponse:
-    if len(files) < 3:
+    if len(files) < 1:
         raise HTTPException(
             status_code=400,
-            detail={"code": "insufficient_frames", "message": "At least 3 enrollment frames are required."},
+            detail={"code": "insufficient_frames", "message": "At least 1 enrollment image is required."},
         )
 
     embeddings: list[np.ndarray] = []
@@ -95,25 +123,16 @@ async def match_employee(
     except FacePipelineError as error:
         raise as_http_error(error) from error
 
-    candidates = repository.nearest(query_embedding, limit=1)
     timestamp = datetime.now(timezone.utc)
-    if not candidates:
-        return MatchResponse(
-            matched=False,
-            confidence=0.0,
-            threshold=settings.match_threshold,
-            timestamp=timestamp,
-            reason="no_registered_embeddings",
-        )
-    employee = candidates[0]
-    score = employee.score or 0.0
-    if score < settings.match_threshold:
+    matched, employee, score, reason, second_best_score = _match_embedding(query_embedding, settings, repository)
+    if not matched:
         return MatchResponse(
             matched=False,
             confidence=score,
             threshold=settings.match_threshold,
             timestamp=timestamp,
-            reason="below_threshold",
+            reason=reason,
+            second_best_confidence=second_best_score,
         )
 
     return MatchResponse(
@@ -121,8 +140,47 @@ async def match_employee(
         confidence=score,
         threshold=settings.match_threshold,
         timestamp=timestamp,
-        employee=MatchEmployee(employee_id=employee.employee_id, employee_name=employee.employee_name),
+        employee=MatchEmployee(employee_id=employee.employee_id, employee_name=employee.employee_name) if employee else None,
+        second_best_confidence=second_best_score,
     )
+
+
+@app.post("/match/faces", response_model=MultiMatchResponse, dependencies=[Depends(require_api_key)])
+async def match_faces(
+    file: UploadFile = File(...),
+    settings: Settings = Depends(get_settings),
+    repository: EmbeddingRepository = Depends(get_repository),
+    engine: FaceEngine = Depends(get_face_engine),
+    anti_spoofing: AntiSpoofingService = Depends(get_anti_spoofing_service),
+) -> MultiMatchResponse:
+    timestamp = datetime.now(timezone.utc)
+    try:
+        image = decode_jpeg(await file.read(), max_file_bytes=settings.max_file_bytes)
+        anti_spoofing.validate(image)
+        face_embeddings = engine.embed_many(image)
+    except FacePipelineError as error:
+        raise as_http_error(error) from error
+
+    height, width = image.shape[:2]
+    faces: list[MultiFaceMatch] = []
+    for face in face_embeddings:
+        matched, employee, score, reason, second_best_score = _match_embedding(face.embedding, settings, repository)
+        left, top, right, bottom = face.bbox
+        faces.append(
+            MultiFaceMatch(
+                matched=matched,
+                confidence=score,
+                threshold=settings.match_threshold,
+                bbox=FaceBox(left=left, top=top, right=right, bottom=bottom),
+                employee=MatchEmployee(employee_id=employee.employee_id, employee_name=employee.employee_name)
+                if matched and employee
+                else None,
+                reason=reason,
+                second_best_confidence=second_best_score,
+            )
+        )
+
+    return MultiMatchResponse(timestamp=timestamp, image_width=width, image_height=height, faces=faces)
 
 
 @app.delete("/employee/{employee_id}", response_model=DeleteResponse, dependencies=[Depends(require_api_key)])

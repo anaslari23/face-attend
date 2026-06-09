@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
@@ -7,6 +9,10 @@ class FaceScanView extends StatelessWidget {
     this.camera,
     this.progress,
     this.target,
+    this.faceBounds,
+    this.faceImageSize,
+    this.faceOverlays = const [],
+    this.faceReady = false,
     this.prompt = 'Look straight and keep your face inside the frame.',
     super.key,
   });
@@ -15,6 +21,10 @@ class FaceScanView extends StatelessWidget {
   final String message;
   final int? progress;
   final int? target;
+  final Rect? faceBounds;
+  final Size? faceImageSize;
+  final List<FaceOverlay> faceOverlays;
+  final bool faceReady;
   final String prompt;
 
   @override
@@ -27,12 +37,19 @@ class FaceScanView extends StatelessWidget {
         fit: StackFit.expand,
         children: [
           if (initialized)
-            CameraPreview(camera!)
+            _CameraPreviewCover(camera: camera!)
           else
             Center(
               child: Text(message, style: const TextStyle(color: Colors.white)),
             ),
-          const _FaceGuide(),
+          _FaceGuide(
+            faceBounds: faceBounds,
+            faceOverlays: faceOverlays,
+            imageSize: faceImageSize,
+            isFrontCamera:
+                camera?.description.lensDirection == CameraLensDirection.front,
+            ready: faceReady,
+          ),
           Positioned(
             left: 16,
             right: 16,
@@ -49,99 +66,182 @@ class FaceScanView extends StatelessWidget {
   }
 }
 
-class _FaceGuide extends StatefulWidget {
-  const _FaceGuide();
+class _CameraPreviewCover extends StatelessWidget {
+  const _CameraPreviewCover({required this.camera});
+
+  final CameraController camera;
 
   @override
-  State<_FaceGuide> createState() => _FaceGuideState();
+  Widget build(BuildContext context) {
+    final previewSize = camera.value.previewSize;
+    if (previewSize == null) {
+      return CameraPreview(camera);
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final portrait = constraints.maxHeight >= constraints.maxWidth;
+        final previewWidth = portrait ? previewSize.height : previewSize.width;
+        final previewHeight = portrait ? previewSize.width : previewSize.height;
+
+        return ClipRect(
+          child: OverflowBox(
+            maxWidth: double.infinity,
+            maxHeight: double.infinity,
+            child: FittedBox(
+              fit: BoxFit.cover,
+              child: SizedBox(
+                width: previewWidth,
+                height: previewHeight,
+                child: CameraPreview(camera),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
 }
 
-class _FaceGuideState extends State<_FaceGuide>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _controller;
-  late final Animation<double> _animation;
+class _FaceGuide extends StatelessWidget {
+  const _FaceGuide({
+    required this.faceBounds,
+    required this.faceOverlays,
+    required this.imageSize,
+    required this.isFrontCamera,
+    required this.ready,
+  });
 
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
-    )..repeat(reverse: true);
-    _animation = Tween<double>(
-      begin: 0.98,
-      end: 1.04,
-    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
+  final Rect? faceBounds;
+  final List<FaceOverlay> faceOverlays;
+  final Size? imageSize;
+  final bool isFrontCamera;
+  final bool ready;
 
   @override
   Widget build(BuildContext context) {
     return IgnorePointer(
-      child: Center(
-        child: AnimatedBuilder(
-          animation: _animation,
-          builder: (context, child) {
-            return Transform.scale(
-              scale: _animation.value,
-              child: Container(
-                width: 220,
-                height: 290,
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: const Color(0xFFFF6B35),
-                    width: 3.5,
-                  ),
-                  borderRadius: BorderRadius.circular(145),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFFF6B35).withValues(alpha: 0.25),
-                      blurRadius: 15,
-                      spreadRadius: 2,
-                    ),
-                  ],
-                ),
-                child: Stack(
-                  children: [
-                    // Corner targeting notches
-                    Positioned(
-                      top: 40,
-                      left: 10,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      top: 40,
-                      right: 10,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Colors.white,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
+      child: CustomPaint(
+        painter: _FaceGuidePainter(
+          faceBounds: faceBounds,
+          faceOverlays: faceOverlays,
+          imageSize: imageSize,
+          isFrontCamera: isFrontCamera,
+          ready: ready,
         ),
       ),
     );
   }
+}
+
+class _FaceGuidePainter extends CustomPainter {
+  const _FaceGuidePainter({
+    required this.faceBounds,
+    required this.faceOverlays,
+    required this.imageSize,
+    required this.isFrontCamera,
+    required this.ready,
+  });
+
+  final Rect? faceBounds;
+  final List<FaceOverlay> faceOverlays;
+  final Size? imageSize;
+  final bool isFrontCamera;
+  final bool ready;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final sourceSize = imageSize;
+    if (sourceSize == null) return;
+    if (faceOverlays.isEmpty && faceBounds == null) return;
+    final boxes = faceOverlays.isNotEmpty
+        ? faceOverlays
+        : [FaceOverlay(bounds: faceBounds!, label: null, ready: ready)];
+
+    final scale = math.max(
+      size.width / sourceSize.width,
+      size.height / sourceSize.height,
+    );
+    final dx = (size.width - sourceSize.width * scale) / 2;
+    final dy = (size.height - sourceSize.height * scale) / 2;
+
+    for (final overlay in boxes) {
+      final box = overlay.bounds;
+      var left = box.left * scale + dx;
+      final top = box.top * scale + dy;
+      var right = box.right * scale + dx;
+      final bottom = box.bottom * scale + dy;
+      if (isFrontCamera) {
+        final mirroredLeft = size.width - right;
+        right = size.width - left;
+        left = mirroredLeft;
+      }
+
+      final rect = Rect.fromLTRB(left, top, right, bottom).inflate(18);
+      final color = overlay.ready
+          ? const Color(0xFF30D158)
+          : const Color(0xFFFFC107);
+      final boxPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 4
+        ..strokeCap = StrokeCap.round
+        ..color = color;
+      final glowPaint = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 10
+        ..color = color.withValues(alpha: 0.18);
+
+      canvas.drawOval(rect, glowPaint);
+      canvas.drawOval(rect, boxPaint);
+      if (overlay.label != null && overlay.label!.isNotEmpty) {
+        _drawLabel(canvas, rect, overlay.label!, color);
+      }
+    }
+  }
+
+  void _drawLabel(Canvas canvas, Rect rect, String label, Color color) {
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 14,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+      ellipsis: '...',
+    )..layout(maxWidth: 180);
+    final labelRect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(
+        rect.left,
+        math.max(8, rect.top - textPainter.height - 12),
+        textPainter.width + 18,
+        textPainter.height + 10,
+      ),
+      const Radius.circular(14),
+    );
+    final fill = Paint()..color = color.withValues(alpha: 0.92);
+    canvas.drawRRect(labelRect, fill);
+    textPainter.paint(canvas, Offset(labelRect.left + 9, labelRect.top + 5));
+  }
+
+  @override
+  bool shouldRepaint(covariant _FaceGuidePainter oldDelegate) =>
+      oldDelegate.faceBounds != faceBounds ||
+      oldDelegate.faceOverlays != faceOverlays ||
+      oldDelegate.imageSize != imageSize ||
+      oldDelegate.isFrontCamera != isFrontCamera ||
+      oldDelegate.ready != ready;
+}
+
+class FaceOverlay {
+  const FaceOverlay({required this.bounds, required this.ready, this.label});
+
+  final Rect bounds;
+  final bool ready;
+  final String? label;
 }
 
 class _ScanPrompt extends StatelessWidget {

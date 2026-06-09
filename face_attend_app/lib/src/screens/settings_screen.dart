@@ -22,7 +22,7 @@ class SettingsScreen extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           children: [
             Text(
-              'ACCOUNT DETAILS',
+              'SCANNER DETAILS',
               style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
@@ -34,28 +34,23 @@ class SettingsScreen extends StatelessWidget {
             _SettingsPanel(
               children: [
                 _SettingsTile(
-                  icon: Icons.person,
-                  label: 'Employee Name',
-                  value: session.employee.name,
+                  icon: Icons.qr_code_scanner,
+                  label: 'Scanner Name',
+                  value: session.deviceName,
                 ),
                 const Divider(height: 1, thickness: 0.5, indent: 56),
                 _SettingsTile(
-                  icon: Icons.badge,
-                  label: 'Employee ID',
-                  value: session.employee.id.toString(),
+                  icon: Icons.devices,
+                  label: 'Scanner Device ID',
+                  value: session.deviceId,
                 ),
                 const Divider(height: 1, thickness: 0.5, indent: 56),
                 _SettingsTile(
-                  icon: session.employee.faceRegistered
-                      ? Icons.verified_user
-                      : Icons.warning_amber_rounded,
-                  iconColor: session.employee.faceRegistered
-                      ? const Color(0xFF2ECC71)
-                      : const Color(0xFFFF9800),
-                  label: 'Biometric Status',
-                  value: session.employee.faceRegistered
-                      ? 'Template Registered'
-                      : 'Enrollment Required',
+                  icon: Icons.vpn_key,
+                  label: 'Scanner Token',
+                  value: session.token.isEmpty
+                      ? 'Not configured'
+                      : 'Configured',
                 ),
               ],
             ),
@@ -139,13 +134,11 @@ class _SettingsTile extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
-    this.iconColor,
   });
 
   final IconData icon;
   final String label;
   final String value;
-  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
@@ -153,14 +146,10 @@ class _SettingsTile extends StatelessWidget {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: (iconColor ?? const Color(0xFFFF6B35)).withValues(alpha: 0.1),
+          color: const Color(0xFFFF6B35).withValues(alpha: 0.1),
           shape: BoxShape.circle,
         ),
-        child: Icon(
-          icon,
-          color: iconColor ?? const Color(0xFFFF6B35),
-          size: 20,
-        ),
+        child: Icon(icon, color: const Color(0xFFFF6B35), size: 20),
       ),
       title: Text(
         label,

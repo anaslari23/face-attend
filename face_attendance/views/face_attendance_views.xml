@@ -48,6 +48,7 @@
         <field name="arch" type="xml">
             <list decoration-muted="not active">
                 <field name="name"/>
+                <field name="device_type"/>
                 <field name="employee_id"/>
                 <field name="device_uid"/>
                 <field name="active"/>
@@ -62,10 +63,14 @@
         <field name="model">face.attendance.device</field>
         <field name="arch" type="xml">
             <form>
+                <header>
+                    <button name="action_generate_token" type="object" string="Generate New Token" class="btn-secondary"/>
+                </header>
                 <sheet>
                     <group>
                         <group>
                             <field name="name"/>
+                            <field name="device_type"/>
                             <field name="employee_id"/>
                             <field name="device_uid"/>
                             <field name="active"/>
@@ -112,12 +117,10 @@
                 <filter string="Check Out" name="check_out" domain="[('punch_type', '=', 'check_out')]"/>
                 <separator/>
                 <filter string="Today" name="today" domain="[('create_date', '&gt;=', context_today().strftime('%Y-%m-%d 00:00:00'))]"/>
-                <group expand="0" string="Group By">
-                    <filter string="Employee" name="group_employee" context="{'group_by': 'employee_id'}"/>
-                    <filter string="Punch Type" name="group_punch" context="{'group_by': 'punch_type'}"/>
-                    <filter string="Accepted" name="group_accepted" context="{'group_by': 'accepted'}"/>
-                    <filter string="Date" name="group_date" context="{'group_by': 'create_date:day'}"/>
-                </group>
+                <filter string="Employee" name="group_employee" context="{'group_by': 'employee_id'}"/>
+                <filter string="Punch Type" name="group_punch" context="{'group_by': 'punch_type'}"/>
+                <filter string="Accepted" name="group_accepted" context="{'group_by': 'accepted'}"/>
+                <filter string="Date" name="group_date" context="{'group_by': 'create_date:day'}"/>
             </search>
         </field>
     </record>

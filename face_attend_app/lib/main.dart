@@ -57,9 +57,32 @@ class _FaceAttendAppState extends State<FaceAttendApp> {
       title: 'FaceAttend',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff176b5b)),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFFFF6B35),
+          primary: const Color(0xFFFF6B35),
+          secondary: const Color(0xFFFFC107),
+        ),
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xfff7faf8),
+        scaffoldBackgroundColor: const Color(0xFFF8F9FA),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.white,
+          foregroundColor: Color(0xFF1E1E1E),
+          elevation: 0,
+          centerTitle: true,
+          titleTextStyle: TextStyle(
+            color: Color(0xFF1E1E1E),
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        cardTheme: CardThemeData(
+          color: Colors.white,
+          elevation: 2,
+          shadowColor: Colors.black.withValues(alpha: 0.05),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+        ),
       ),
       home: _loading
           ? const _LoadingScreen()
@@ -96,20 +119,45 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _refresh() {
-    setState(() => _statusFuture = _client.status());
+    setState(() {
+      _statusFuture = _client.status();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final employee = widget.session.employee;
+    final initials = employee.name.split(' ').map((e) => e.isNotEmpty ? e[0] : '').take(2).join().toUpperCase();
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('FaceAttend'),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF6B35).withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.face_retouching_natural,
+                color: Color(0xFFFF6B35),
+                size: 20,
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'FaceAttend',
+              style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: -0.5),
+            ),
+          ],
+        ),
         actions: [
           IconButton(
             onPressed: _refresh,
-            tooltip: 'Refresh',
-            icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh Status',
+            icon: const Icon(Icons.sync, color: Color(0xFF555555)),
           ),
           IconButton(
             onPressed: () {
@@ -123,72 +171,217 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
             tooltip: 'Settings',
-            icon: const Icon(Icons.settings),
+            icon: const Icon(Icons.settings, color: Color(0xFF555555)),
           ),
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(20),
-          children: [
-            Text(employee.name, style: Theme.of(context).textTheme.headlineSmall),
-            if (employee.department != null)
-              Text(employee.department!, style: Theme.of(context).textTheme.bodyLarge),
-            const SizedBox(height: 20),
-            FutureBuilder<AttendanceStatus>(
-              future: _statusFuture,
-              builder: (context, snapshot) {
-                final status = snapshot.data;
-                return _StatusPanel(
-                  loading: snapshot.connectionState == ConnectionState.waiting,
-                  checkedIn: status?.checkedIn ?? false,
-                  checkIn: status?.checkIn,
-                  faceRegistered: employee.faceRegistered,
-                );
-              },
-            ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => AttendanceScreen(session: widget.session),
+        child: RefreshIndicator(
+          onRefresh: () async => _refresh(),
+          color: const Color(0xFFFF6B35),
+          child: ListView(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            children: [
+              // Employee Profile Card
+              Card(
+                margin: EdgeInsets.zero,
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 54,
+                        height: 54,
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [Color(0xFFFF6B35), Color(0xFFFFC107)],
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          initials,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              employee.name,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E1E1E),
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              employee.department ?? 'No Department',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                );
-                _refresh();
-              },
-              icon: const Icon(Icons.face),
-              label: const Text('Scan Attendance'),
-            ),
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: () async {
-                await Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => EnrollmentScreen(session: widget.session),
-                  ),
-                );
-                _refresh();
-              },
-              icon: const Icon(Icons.person_add_alt_1),
-              label: const Text('Register Face'),
-            ),
-            const SizedBox(height: 12),
-            TextButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => SettingsScreen(
-                      session: widget.session,
-                      onLogout: widget.onLogout,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // Status panel builder
+              FutureBuilder<AttendanceStatus>(
+                future: _statusFuture,
+                builder: (context, snapshot) {
+                  final status = snapshot.data;
+                  return _StatusPanel(
+                    loading: snapshot.connectionState == ConnectionState.waiting,
+                    checkedIn: status?.checkedIn ?? false,
+                    checkIn: status?.checkIn,
+                    faceRegistered: employee.faceRegistered,
+                  );
+                },
+              ),
+              const SizedBox(height: 24),
+
+              const Text(
+                'QUICK ACTIONS',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.0,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // Quick action buttons designed as modern dashboard cards
+              _QuickActionCard(
+                title: 'Scan Attendance',
+                subtitle: 'Verify your face to check in or out',
+                icon: Icons.qr_code_scanner,
+                iconColor: const Color(0xFFFF6B35),
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => AttendanceScreen(session: widget.session),
                     ),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.settings),
-              label: const Text('Settings'),
-            ),
-          ],
+                  );
+                  _refresh();
+                },
+              ),
+              const SizedBox(height: 12),
+              _QuickActionCard(
+                title: 'Register Face Template',
+                subtitle: 'Capture 3 samples for your biometric ID',
+                icon: Icons.face,
+                iconColor: const Color(0xFFFFC107),
+                onTap: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => EnrollmentScreen(session: widget.session),
+                    ),
+                  );
+                  _refresh();
+                },
+              ),
+              const SizedBox(height: 12),
+              _QuickActionCard(
+                title: 'Configuration Settings',
+                subtitle: 'View active database and session details',
+                icon: Icons.tune,
+                iconColor: Colors.blueGrey,
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SettingsScreen(
+                        session: widget.session,
+                        onLogout: widget.onLogout,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickActionCard extends StatelessWidget {
+  const _QuickActionCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.iconColor,
+    required this.onTap,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final Color iconColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, color: iconColor, size: 28),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E1E1E),
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: Colors.grey.shade400),
+            ],
+          ),
         ),
       ),
     );
@@ -210,43 +403,81 @@ class _StatusPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = checkedIn ? Colors.green.shade700 : Colors.blueGrey.shade700;
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: Colors.black12),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(checkedIn ? Icons.login : Icons.logout, color: color),
-              const SizedBox(width: 10),
-              Text(
-                loading ? 'Checking status...' : checkedIn ? 'Checked in' : 'Checked out',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(color: color),
+    final statusColor = checkedIn ? const Color(0xFF2ECC71) : const Color(0xFF95A5A6);
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: statusColor.withValues(alpha: 0.4),
+                        blurRadius: 6,
+                        spreadRadius: 2,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  loading
+                      ? 'Checking status...'
+                      : checkedIn
+                          ? 'CURRENTLY CHECKED IN'
+                          : 'CURRENTLY CHECKED OUT',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5,
+                    color: statusColor,
+                  ),
+                ),
+              ],
+            ),
+            if (checkIn != null) ...[
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(Icons.access_time_filled, size: 16, color: Colors.grey.shade600),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Checked in at: ${checkIn!.toLocal().toString().substring(11, 16)}',
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                  ),
+                ],
               ),
             ],
-          ),
-          if (checkIn != null) ...[
-            const SizedBox(height: 8),
-            Text('Check-in: ${checkIn!.toLocal()}'),
+            const Divider(height: 24, thickness: 0.5),
+            Row(
+              children: [
+                Icon(
+                  faceRegistered ? Icons.verified_user : Icons.warning_amber_rounded,
+                  color: faceRegistered ? const Color(0xFF2ECC71) : const Color(0xFFFF9800),
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  faceRegistered ? 'Biometric template registered' : 'Enrollment required',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: faceRegistered ? Colors.grey.shade800 : const Color(0xFFFF9800),
+                  ),
+                ),
+              ],
+            ),
           ],
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Icon(
-                faceRegistered ? Icons.verified_user : Icons.warning_amber,
-                color: faceRegistered ? Colors.green.shade700 : Colors.orange.shade800,
-              ),
-              const SizedBox(width: 8),
-              Text(faceRegistered ? 'Face enrolled' : 'Face enrollment required'),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }

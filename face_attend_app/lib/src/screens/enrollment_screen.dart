@@ -109,10 +109,27 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
     }
   }
 
+  String get _currentPrompt {
+    if (_busy) return 'Processing biometric data...';
+    switch (_embeddings.length) {
+      case 0:
+        return 'Step 1: Look straight with a neutral expression.';
+      case 1:
+        return 'Step 2: Turn slightly or adjust lighting conditions.';
+      case 2:
+        return 'Step 3: Smile or blink to verify liveness.';
+      default:
+        return 'Registration complete!';
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Enroll Face')),
+      backgroundColor: const Color(0xFFF8F9FA),
+      appBar: AppBar(
+        title: const Text('Enroll Face Biometrics'),
+      ),
       body: Column(
         children: [
           Expanded(
@@ -121,22 +138,114 @@ class _EnrollmentScreenState extends State<EnrollmentScreen> {
               message: _message,
               progress: _embeddings.length,
               target: _targetSamples,
-              prompt: 'Move slowly and keep your face inside the frame.',
+              prompt: _currentPrompt,
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(_message, textAlign: TextAlign.center),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: _busy ? null : _capture,
-                  icon: _busy
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.camera_alt),
-                  label: Text(_embeddings.length >= _targetSamples - 1 ? 'Finish Registration' : 'Capture Sample'),
+                // Enrollment Checklist / Indicators
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(_targetSamples, (index) {
+                    final isCaptured = index < _embeddings.length;
+                    final isCurrent = index == _embeddings.length;
+                    return Container(
+                      width: 44,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 4),
+                      decoration: BoxDecoration(
+                        color: isCaptured
+                            ? const Color(0xFF2ECC71)
+                            : isCurrent
+                                ? const Color(0xFFFF6B35)
+                                : Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    );
+                  }),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  _message,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    gradient: _busy
+                        ? null
+                        : const LinearGradient(
+                            colors: [Color(0xFFFF6B35), Color(0xFFFFC107)],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          ),
+                    color: _busy ? Colors.grey.shade300 : null,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: _busy
+                        ? null
+                        : [
+                            BoxShadow(
+                              color: const Color(0xFFFF6B35).withValues(alpha: 0.25),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                  ),
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: _busy ? null : _capture,
+                    child: _busy
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFFFF6B35),
+                            ),
+                          )
+                        : Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.camera_alt, color: Colors.white),
+                              const SizedBox(width: 8),
+                              Text(
+                                _embeddings.length >= _targetSamples - 1 ? 'Finish Registration' : 'Capture Sample',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
                 ),
               ],
             ),

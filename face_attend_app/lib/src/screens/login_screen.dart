@@ -82,100 +82,232 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FA),
       body: SafeArea(
         child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 460),
-            child: ListView(
-              padding: const EdgeInsets.all(24),
-              shrinkWrap: true,
-              children: [
-                const Icon(Icons.face_retouching_natural, size: 58),
-                const SizedBox(height: 16),
-                Text('FaceAttend', style: Theme.of(context).textTheme.headlineMedium, textAlign: TextAlign.center),
-                const SizedBox(height: 28),
-                Form(
-                  key: _formKey,
-                  child: Column(
-                    children: [
-                      TextFormField(
-                        controller: _baseUrl,
-                        decoration: const InputDecoration(labelText: 'Odoo URL', border: OutlineInputBorder()),
-                        keyboardType: TextInputType.url,
-                        validator: _required,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Logo & Header
+                  Container(
+                    width: 72,
+                    height: 72,
+                    decoration: const BoxDecoration(
+                      shape: BoxShape.circle,
+                      gradient: LinearGradient(
+                        colors: [Color(0xFFFF6B35), Color(0xFFFFC107)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                      const SizedBox(height: 12),
-                      if (_availableDbs != null && _availableDbs!.isNotEmpty)
-                        DropdownButtonFormField<String>(
-                          value: _availableDbs!.contains(_db.text) ? _db.text : null,
-                          decoration: InputDecoration(
-                            labelText: 'Database',
-                            border: const OutlineInputBorder(),
-                            suffixIcon: _fetchingDb
-                                ? const Padding(
-                                    padding: EdgeInsets.all(12),
-                                    child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                                  )
-                                : IconButton(
-                                    icon: const Icon(Icons.sync),
-                                    onPressed: _fetchDbs,
-                                    tooltip: 'Refresh Databases',
-                                  ),
-                          ),
-                          items: _availableDbs!.map((db) {
-                            return DropdownMenuItem(value: db, child: Text(db));
-                          }).toList(),
-                          onChanged: (val) {
-                            if (val != null) {
-                              _db.text = val;
-                            }
-                          },
-                          validator: _required,
-                        )
-                      else
-                        TextFormField(
-                          controller: _db,
-                          decoration: InputDecoration(
-                            labelText: 'Database',
-                            border: const OutlineInputBorder(),
-                            suffixIcon: _fetchingDb
-                                ? const Padding(
-                                    padding: EdgeInsets.all(12),
-                                    child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
-                                  )
-                                : IconButton(
-                                    icon: const Icon(Icons.search),
-                                    onPressed: _fetchDbs,
-                                    tooltip: 'Fetch Databases',
-                                  ),
-                          ),
-                          validator: _required,
-                        ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _login,
-                        decoration: const InputDecoration(labelText: 'Email / Login', border: OutlineInputBorder()),
-                        validator: _required,
-                      ),
-                      const SizedBox(height: 12),
-                      TextFormField(
-                        controller: _password,
-                        decoration: const InputDecoration(labelText: 'Password', border: OutlineInputBorder()),
-                        obscureText: true,
-                        validator: _required,
-                      ),
-                    ],
+                    ),
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.face_retouching_natural,
+                      size: 38,
+                      color: Colors.white,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed: _loading ? null : _submit,
-                  icon: _loading
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.login),
-                  label: const Text('Login'),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  const Text(
+                    'FaceAttend',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF1E1E1E),
+                      letterSpacing: -0.5,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Biometric Enterprise Portal',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+
+                  // Floating Login Card
+                  Card(
+                    margin: EdgeInsets.zero,
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Text(
+                              'SIGN IN',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.0,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _baseUrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Odoo Server URL',
+                                prefixIcon: Icon(Icons.dns, size: 20),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.all(Radius.circular(12)),
+                                ),
+                              ),
+                              keyboardType: TextInputType.url,
+                              validator: _required,
+                            ),
+                            const SizedBox(height: 16),
+                            if (_availableDbs != null && _availableDbs!.isNotEmpty)
+                              DropdownButtonFormField<String>(
+                                initialValue: _availableDbs!.contains(_db.text) ? _db.text : null,
+                                decoration: InputDecoration(
+                                  labelText: 'Database',
+                                  prefixIcon: const Icon(Icons.storage, size: 20),
+                                  border: const OutlineInputBorder(
+                                    borderRadius: BorderRadius.all(Radius.circular(12)),
+                                  ),
+                                  suffixIcon: _fetchingDb
+                                      ? const Padding(
+                                          padding: EdgeInsets.all(12),
+                                          child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                                        )
+                                      : IconButton(
+                                          icon: const Icon(Icons.sync, size: 20),
+                                          onPressed: _fetchDbs,
+                                          tooltip: 'Refresh Databases',
+                                        ),
+                                ),
+                                items: _availableDbs!.map((db) {
+                                  return DropdownMenuItem(value: db, child: Text(db));
+                                }).toList(),
+                                onChanged: (val) {
+                                  if (val != null) {
+                                    _db.text = val;
+                                  }
+                                },
+                                validator: _required,
+                              )
+                            else
+                              TextFormField(
+                                controller: _db,
+                                decoration: InputDecoration(
+                                  labelText: 'Database Name',
+                                  prefixIcon: const Icon(Icons.storage, size: 20),
+                                  border: const OutlineInputBorder(
+                                    borderRadius: BorderRadius.all(Radius.circular(12)),
+                                  ),
+                                  suffixIcon: _fetchingDb
+                                      ? const Padding(
+                                          padding: EdgeInsets.all(12),
+                                          child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                                        )
+                                      : IconButton(
+                                          icon: const Icon(Icons.search, size: 20),
+                                          onPressed: _fetchDbs,
+                                          tooltip: 'Fetch Databases',
+                                        ),
+                                ),
+                                validator: _required,
+                              ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _login,
+                              decoration: const InputDecoration(
+                                labelText: 'Email Address',
+                                prefixIcon: Icon(Icons.email, size: 20),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.all(Radius.circular(12)),
+                                ),
+                              ),
+                              keyboardType: TextInputType.emailAddress,
+                              validator: _required,
+                            ),
+                            const SizedBox(height: 16),
+                            TextFormField(
+                              controller: _password,
+                              decoration: const InputDecoration(
+                                labelText: 'Password',
+                                prefixIcon: Icon(Icons.lock, size: 20),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.all(Radius.circular(12)),
+                                ),
+                              ),
+                              obscureText: true,
+                              validator: _required,
+                            ),
+                            const SizedBox(height: 24),
+
+                            // Gradient Sign-In Button
+                            Container(
+                              height: 52,
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [Color(0xFFFF6B35), Color(0xFFFFC107)],
+                                  begin: Alignment.centerLeft,
+                                  end: Alignment.centerRight,
+                                ),
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xFFFF6B35).withValues(alpha: 0.3),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 4),
+                                  ),
+                                ],
+                              ),
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.transparent,
+                                  shadowColor: Colors.transparent,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                onPressed: _loading ? null : _submit,
+                                child: _loading
+                                    ? const SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Row(
+                                        mainAxisAlignment: MainAxisAlignment.center,
+                                        children: [
+                                          Icon(Icons.login, color: Colors.white),
+                                          SizedBox(width: 8),
+                                          Text(
+                                            'Sign In',
+                                            style: TextStyle(
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

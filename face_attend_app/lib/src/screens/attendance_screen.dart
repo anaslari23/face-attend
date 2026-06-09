@@ -151,29 +151,102 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scan Attendance')),
+      backgroundColor: const Color(0xFFF8F9FA),
+      appBar: AppBar(
+        title: const Text('Scan Attendance'),
+      ),
       body: Column(
         children: [
           Expanded(
             child: FaceScanView(
               camera: _camera,
               message: _message,
-              prompt: 'Blink once, look straight, then scan.',
+              prompt: _busy ? 'Processing biometric scan...' : 'Align face and blink once to verify liveness.',
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(_message, textAlign: TextAlign.center),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: _busy || _template == null ? null : _scan,
-                  icon: _busy
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.face),
-                  label: const Text('Scan Now'),
+                Text(
+                  _message,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    gradient: _busy || _template == null
+                        ? null
+                        : const LinearGradient(
+                            colors: [Color(0xFFFF6B35), Color(0xFFFFC107)],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          ),
+                    color: _busy || _template == null ? Colors.grey.shade300 : null,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: _busy || _template == null
+                        ? null
+                        : [
+                            BoxShadow(
+                              color: const Color(0xFFFF6B35).withValues(alpha: 0.25),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                  ),
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: _busy || _template == null ? null : _scan,
+                    child: _busy
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFFFF6B35),
+                            ),
+                          )
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.face, color: Colors.white),
+                              SizedBox(width: 8),
+                              Text(
+                                'Scan Now',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
                 ),
               ],
             ),

@@ -11,6 +11,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('FaceAttend'), findsOneWidget);
-    expect(find.text('Login'), findsOneWidget);
+    expect(find.text('Sign In'), findsOneWidget);
   });
 }

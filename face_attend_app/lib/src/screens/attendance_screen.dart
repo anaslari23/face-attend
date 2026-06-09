@@ -29,7 +29,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   void initState() {
     super.initState();
-    _client = OdooFaceAttendanceClient(baseUrl: widget.session.baseUrl, db: widget.session.db, token: widget.session.token);
+    _client = OdooFaceAttendanceClient(
+      baseUrl: widget.session.baseUrl,
+      db: widget.session.db,
+      token: widget.session.token,
+    );
     _init();
   }
 
@@ -40,7 +44,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         (camera) => camera.lensDirection == CameraLensDirection.front,
         orElse: () => cameras.first,
       );
-      _camera = CameraController(front, ResolutionPreset.medium, enableAudio: false);
+      _camera = CameraController(
+        front,
+        ResolutionPreset.medium,
+        enableAudio: false,
+      );
       await _camera!.initialize();
       if (!mounted) return;
       setState(() {
@@ -86,7 +94,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       final match = await middleware.match(imagePath: imagePath);
       await deleteImageQuietly(imagePath);
       imagePath = null;
-      final accepted = match.matched && match.employeeId == widget.session.employee.id;
+      final accepted =
+          match.matched && match.employeeId == widget.session.employee.id;
       final device = await _deviceService.identity();
       final appVersion = await _deviceService.appVersion();
       final punch = await _client.punch(
@@ -98,8 +107,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         failureReason: accepted
             ? null
             : match.matched
-                ? 'Matched a different employee'
-                : match.reason ?? 'Face match below threshold',
+            ? 'Matched a different employee'
+            : match.reason ?? 'Face match below threshold',
       );
       if (!mounted) return;
       await Navigator.of(context).push(
@@ -108,16 +117,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             success: punch.accepted,
             title: punch.accepted
                 ? punch.punchType == 'check_out'
-                    ? 'Checked out'
-                    : 'Checked in'
+                      ? 'Checked out'
+                      : 'Checked in'
                 : 'Face match failed',
             message: punch.accepted
                 ? 'Attendance was recorded successfully.'
                 : accepted
-                    ? 'Attendance was recorded successfully.'
-                    : match.matched
-                        ? 'The scan matched a different employee.'
-                        : match.reason ?? 'Your face did not match the registered template.',
+                ? 'Attendance was recorded successfully.'
+                : match.matched
+                ? 'The scan matched a different employee.'
+                : match.reason ??
+                      'Your face did not match the registered template.',
             time: DateTime.now(),
             confidence: match.confidence,
             showRetry: !punch.accepted,
@@ -163,6 +173,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(title: const Text('Scan Attendance')),
       body: Column(
         children: [
@@ -170,22 +181,98 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             child: FaceScanView(
               camera: _camera,
               message: _message,
-              prompt: 'Blink once, look straight, then scan.',
+              prompt: _busy
+                  ? 'Processing biometric scan...'
+                  : 'Align face and blink once to verify liveness.',
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.all(16),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -4),
+                ),
+              ],
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Text(_message, textAlign: TextAlign.center),
-                const SizedBox(height: 12),
-                FilledButton.icon(
-                  onPressed: _busy ? null : _scan,
-                  icon: _busy
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.face),
-                  label: const Text('Scan Now'),
+                Text(
+                  _message,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    gradient: _busy
+                        ? null
+                        : const LinearGradient(
+                            colors: [Color(0xFFFF6B35), Color(0xFFFFC107)],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          ),
+                    color: _busy ? Colors.grey.shade300 : null,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: _busy
+                        ? null
+                        : [
+                            BoxShadow(
+                              color: const Color(
+                                0xFFFF6B35,
+                              ).withValues(alpha: 0.25),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                  ),
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: _busy ? null : _scan,
+                    child: _busy
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Color(0xFFFF6B35),
+                            ),
+                          )
+                        : const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.face, color: Colors.white),
+                              SizedBox(width: 8),
+                              Text(
+                                'Scan Now',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                  ),
                 ),
               ],
             ),

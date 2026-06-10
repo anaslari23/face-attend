@@ -84,6 +84,9 @@ class FaceMiddlewareClient {
       }
       throw FaceMiddlewareException(
         statusCode: response.statusCode,
+        code: detail is Map<String, dynamic>
+            ? detail['code']?.toString()
+            : null,
         message: message,
       );
     }
@@ -128,7 +131,14 @@ class FaceMatchResult {
     this.employeeName,
     this.reason,
     this.secondBestConfidence,
+    this.embeddingSource,
+    this.embeddingId,
+    this.needsReview = false,
+    this.reviewEmbeddingId,
     this.boundingBox,
+    this.livenessPassed,
+    this.livenessScore,
+    this.spoofScore,
   });
 
   final bool matched;
@@ -138,7 +148,14 @@ class FaceMatchResult {
   final String? employeeName;
   final String? reason;
   final double? secondBestConfidence;
+  final String? embeddingSource;
+  final int? embeddingId;
+  final bool needsReview;
+  final int? reviewEmbeddingId;
   final MiddlewareFaceBox? boundingBox;
+  final bool? livenessPassed;
+  final double? livenessScore;
+  final double? spoofScore;
 
   factory FaceMatchResult.fromJson(Map<String, dynamic> json) {
     final employee = json['employee'];
@@ -155,9 +172,16 @@ class FaceMatchResult {
       reason: json['reason'] as String?,
       secondBestConfidence: (json['second_best_confidence'] as num?)
           ?.toDouble(),
+      embeddingSource: json['embedding_source'] as String?,
+      embeddingId: json['embedding_id'] as int?,
+      needsReview: json['needs_review'] == true,
+      reviewEmbeddingId: json['review_embedding_id'] as int?,
       boundingBox: json['bbox'] is Map<String, dynamic>
           ? MiddlewareFaceBox.fromJson(json['bbox'] as Map<String, dynamic>)
           : null,
+      livenessPassed: json['liveness_passed'] as bool?,
+      livenessScore: (json['liveness_score'] as num?)?.toDouble(),
+      spoofScore: (json['spoof_score'] as num?)?.toDouble(),
     );
   }
 }
@@ -211,9 +235,11 @@ class FaceMiddlewareException implements Exception {
   const FaceMiddlewareException({
     required this.statusCode,
     required this.message,
+    this.code,
   });
 
   final int statusCode;
+  final String? code;
   final String message;
 
   @override

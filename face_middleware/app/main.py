@@ -11,6 +11,7 @@ from .face_engine import FaceEngine
 from .image_processing import decode_jpeg
 from .repository import EmbeddingRepository, EmployeeEmbedding
 from .schemas import (
+    ApproveEmbeddingResponse,
     DeleteResponse,
     FaceBox,
     HealthResponse,
@@ -34,13 +35,18 @@ def health(
 ) -> HealthResponse:
     database_connected = repository.health()
     embedding_count = repository.count() if database_connected else 0
+    antispoof_model_loaded = anti_spoofing.model_loaded
+    antispoof_ready = not anti_spoofing.enabled or settings.allow_antispoof_stub or antispoof_model_loaded
     return HealthResponse(
-        status="ok" if engine.model_loaded and database_connected else "degraded",
+        status="ok" if engine.model_loaded and database_connected and antispoof_ready else "degraded",
         embedding_backend=settings.embedding_backend,
         model_loaded=engine.model_loaded,
         database_connected=database_connected,
         embedding_count=embedding_count,
         antispoofing=anti_spoofing.mode,
+        antispoofing_enabled=anti_spoofing.enabled,
+        antispoofing_model_loaded=antispoof_model_loaded,
+        antispoofing_threshold=anti_spoofing.threshold if anti_spoofing.enabled else None,
     )
 
 
@@ -48,19 +54,36 @@ def _match_embedding(
     query_embedding: np.ndarray,
     settings: Settings,
     repository: EmbeddingRepository,
-) -> tuple[bool, EmployeeEmbedding | None, float, str | None, float | None]:
-    candidates = repository.nearest(query_embedding, limit=2)
+) -> tuple[bool, EmployeeEmbedding | None, float, str | None, float | None, EmployeeEmbedding | None, bool]:
+    candidates = repository.nearest(query_embedding, limit=10)
     if not candidates:
-        return False, None, 0.0, "no_registered_embeddings", None
+        return False, None, 0.0, "no_registered_embeddings", None, None, False
 
-    employee = candidates[0]
+    grouped: list[EmployeeEmbedding] = []
+    seen_employee_ids: set[int] = set()
+    for candidate in candidates:
+        if candidate.employee_id in seen_employee_ids:
+            continue
+        seen_employee_ids.add(candidate.employee_id)
+        grouped.append(candidate)
+
+    employee = grouped[0]
     score = employee.score or 0.0
-    second_best_score = candidates[1].score if len(candidates) > 1 else None
+    second_best = grouped[1] if len(grouped) > 1 else None
+    second_best_score = second_best.score if second_best else None
     if score < settings.match_threshold:
-        return False, employee, score, "below_threshold", second_best_score
+        needs_review = score >= settings.review_threshold
+        reason = "needs_review" if needs_review else "below_threshold"
+        return False, employee, score, reason, second_best_score, second_best, needs_review
     if second_best_score is not None and (score - second_best_score) < settings.ambiguity_margin:
-        return False, employee, score, "ambiguous_match", second_best_score
-    return True, employee, score, None, second_best_score
+        return False, employee, score, "ambiguous_match", second_best_score, second_best, False
+    return True, employee, score, None, second_best_score, second_best, False
+
+
+def _match_employee_payload(employee: EmployeeEmbedding | None) -> MatchEmployee | None:
+    if not employee:
+        return None
+    return MatchEmployee(employee_id=employee.employee_id, employee_name=employee.employee_name)
 
 
 @app.post("/register", response_model=RegisterResponse, dependencies=[Depends(require_api_key)])
@@ -84,7 +107,6 @@ async def register_employee(
     for upload in files:
         try:
             image = decode_jpeg(await upload.read(), max_file_bytes=settings.max_file_bytes)
-            anti_spoofing.validate(image)
             registration_face = engine.embed_for_registration(image)
             registration_faces.append(registration_face)
             embeddings.append(registration_face.embedding)
@@ -99,7 +121,7 @@ async def register_employee(
             detail={"code": "empty_centroid", "message": "Enrollment frames produced an empty centroid."},
         )
     centroid = (centroid / norm).astype(np.float32)
-    repository.upsert(employee_id=employee_id, employee_name=employee_name, embedding=centroid)
+    embedding_id = repository.upsert(employee_id=employee_id, employee_name=employee_name, embedding=centroid)
 
     primary_face = registration_faces[0] if registration_faces else None
     if primary_face:
@@ -132,33 +154,76 @@ async def match_employee(
 ) -> MatchResponse:
     try:
         image = decode_jpeg(await file.read(), max_file_bytes=settings.max_file_bytes)
-        anti_spoofing.validate(image)
-        query_embedding = engine.embed(image)
+        face_embeddings = engine.embed_many(image)
+        if not face_embeddings:
+            raise FacePipelineError("no_face_detected", "No face detected.")
+        if len(face_embeddings) > 1:
+            raise FacePipelineError("multiple_faces_detected", "Multiple faces detected.")
+        query_face = face_embeddings[0]
+        liveness_score = anti_spoofing.validate(image, query_face.bbox)
+        query_embedding = query_face.embedding
     except FacePipelineError as error:
         raise as_http_error(error) from error
 
     timestamp = datetime.now(timezone.utc)
-    matched, employee, score, reason, second_best_score = _match_embedding(query_embedding, settings, repository)
+    matched, employee, score, reason, second_best_score, second_best, needs_review = _match_embedding(
+        query_embedding,
+        settings,
+        repository,
+    )
+    review_embedding_id = None
+    if needs_review and employee:
+        review_embedding_id = repository.add_variant(
+            employee_id=employee.employee_id,
+            employee_name=employee.employee_name,
+            embedding=query_embedding,
+            source="review_candidate",
+            active=False,
+            quality_score=score,
+        )
     if not matched:
         return MatchResponse(
             matched=False,
             confidence=score,
             threshold=settings.match_threshold,
+            review_threshold=settings.review_threshold,
             timestamp=timestamp,
-            employee=MatchEmployee(employee_id=employee.employee_id, employee_name=employee.employee_name)
-            if employee
-            else None,
+            employee=_match_employee_payload(employee),
             reason=reason,
             second_best_confidence=second_best_score,
+            embedding_source=employee.source if employee else None,
+            embedding_id=employee.embedding_id if employee else None,
+            needs_review=needs_review,
+            review_embedding_id=review_embedding_id,
+            liveness_passed=liveness_score is not None,
+            liveness_score=liveness_score,
+            spoof_score=1.0 - liveness_score if liveness_score is not None else None,
+        )
+
+    if employee and score >= settings.adaptive_update_threshold:
+        repository.add_variant(
+            employee_id=employee.employee_id,
+            employee_name=employee.employee_name,
+            embedding=query_embedding,
+            source="adaptive_scan",
+            active=True,
+            quality_score=score,
+            max_active_embeddings=settings.max_employee_embeddings,
         )
 
     return MatchResponse(
         matched=True,
         confidence=score,
         threshold=settings.match_threshold,
+        review_threshold=settings.review_threshold,
         timestamp=timestamp,
-        employee=MatchEmployee(employee_id=employee.employee_id, employee_name=employee.employee_name) if employee else None,
+        employee=_match_employee_payload(employee),
         second_best_confidence=second_best_score,
+        embedding_source=employee.source if employee else None,
+        embedding_id=employee.embedding_id if employee else None,
+        liveness_passed=liveness_score is not None,
+        liveness_score=liveness_score,
+        spoof_score=1.0 - liveness_score if liveness_score is not None else None,
     )
 
 
@@ -173,7 +238,6 @@ async def match_faces(
     timestamp = datetime.now(timezone.utc)
     try:
         image = decode_jpeg(await file.read(), max_file_bytes=settings.max_file_bytes)
-        anti_spoofing.validate(image)
         face_embeddings = engine.embed_many(image)
     except FacePipelineError as error:
         raise as_http_error(error) from error
@@ -181,19 +245,43 @@ async def match_faces(
     height, width = image.shape[:2]
     faces: list[MultiFaceMatch] = []
     for face in face_embeddings:
-        matched, employee, score, reason, second_best_score = _match_embedding(face.embedding, settings, repository)
+        try:
+            liveness_score = anti_spoofing.validate(image, face.bbox)
+        except FacePipelineError as error:
+            raise as_http_error(error) from error
+        matched, employee, score, reason, second_best_score, second_best, needs_review = _match_embedding(
+            face.embedding,
+            settings,
+            repository,
+        )
+        review_embedding_id = None
+        if needs_review and employee:
+            review_embedding_id = repository.add_variant(
+                employee_id=employee.employee_id,
+                employee_name=employee.employee_name,
+                embedding=face.embedding,
+                source="review_candidate",
+                active=False,
+                quality_score=score,
+            )
         left, top, right, bottom = face.bbox
         faces.append(
             MultiFaceMatch(
                 matched=matched,
                 confidence=score,
                 threshold=settings.match_threshold,
+                review_threshold=settings.review_threshold,
                 bbox=FaceBox(left=left, top=top, right=right, bottom=bottom),
-                employee=MatchEmployee(employee_id=employee.employee_id, employee_name=employee.employee_name)
-                if matched and employee
-                else None,
+                employee=_match_employee_payload(employee),
                 reason=reason,
                 second_best_confidence=second_best_score,
+                embedding_source=employee.source if employee else None,
+                embedding_id=employee.embedding_id if employee else None,
+                needs_review=needs_review,
+                review_embedding_id=review_embedding_id,
+                liveness_passed=liveness_score is not None,
+                liveness_score=liveness_score,
+                spoof_score=1.0 - liveness_score if liveness_score is not None else None,
             )
         )
 
@@ -206,3 +294,22 @@ def delete_employee(
     repository: EmbeddingRepository = Depends(get_repository),
 ) -> DeleteResponse:
     return DeleteResponse(employee_id=employee_id, deleted=repository.delete(employee_id))
+
+
+@app.post(
+    "/employee/{employee_id}/embedding/{embedding_id}/approve",
+    response_model=ApproveEmbeddingResponse,
+    dependencies=[Depends(require_api_key)],
+)
+def approve_employee_embedding(
+    employee_id: int,
+    embedding_id: int,
+    settings: Settings = Depends(get_settings),
+    repository: EmbeddingRepository = Depends(get_repository),
+) -> ApproveEmbeddingResponse:
+    approved = repository.approve_variant(
+        employee_id=employee_id,
+        embedding_id=embedding_id,
+        max_active_embeddings=settings.max_employee_embeddings,
+    )
+    return ApproveEmbeddingResponse(employee_id=employee_id, embedding_id=embedding_id, approved=approved)

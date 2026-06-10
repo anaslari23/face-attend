@@ -76,6 +76,13 @@ class OdooFaceAttendanceClient {
     required String deviceId,
     required String appVersion,
     String? failureReason,
+    double? secondBestConfidence,
+    String? embeddingSource,
+    int? reviewEmbeddingId,
+    bool needsReview = false,
+    bool livenessPassed = false,
+    double? livenessScore,
+    double? spoofScore,
   }) async {
     final payload = await _post('/face_attendance/punch', {
       'accepted': accepted,
@@ -85,6 +92,13 @@ class OdooFaceAttendanceClient {
       'device_id': deviceId,
       'app_version': appVersion,
       'failure_reason': failureReason,
+      'second_best_confidence': secondBestConfidence,
+      'embedding_source': embeddingSource,
+      'review_embedding_id': reviewEmbeddingId,
+      'needs_review': needsReview,
+      'liveness_passed': livenessPassed,
+      'liveness_score': livenessScore,
+      'spoof_score': spoofScore,
     });
     return PunchResult.fromJson(payload);
   }

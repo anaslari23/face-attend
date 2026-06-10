@@ -248,6 +248,29 @@ class FaceAttendanceController(http.Controller):
         device_id = body.get("device_id") or device.device_uid
         app_version = body.get("app_version")
         failure_reason = body.get("failure_reason")
+        second_best_confidence = body.get("second_best_confidence")
+        embedding_source = body.get("embedding_source")
+        review_embedding_id = body.get("review_embedding_id")
+        needs_review = bool(body.get("needs_review"))
+        liveness_passed = bool(body.get("liveness_passed"))
+        liveness_score = body.get("liveness_score")
+        spoof_score = body.get("spoof_score")
+        try:
+            second_best_confidence = float(second_best_confidence) if second_best_confidence is not None else False
+        except (TypeError, ValueError):
+            second_best_confidence = False
+        try:
+            review_embedding_id = int(review_embedding_id) if review_embedding_id else False
+        except (TypeError, ValueError):
+            review_embedding_id = False
+        try:
+            liveness_score = float(liveness_score) if liveness_score is not None else 0.0
+        except (TypeError, ValueError):
+            liveness_score = 0.0
+        try:
+            spoof_score = float(spoof_score) if spoof_score is not None else 0.0
+        except (TypeError, ValueError):
+            spoof_score = 0.0
 
         employee = device.employee_id
         if device.device_type == "scanner":
@@ -263,7 +286,10 @@ class FaceAttendanceController(http.Controller):
         if accepted and not employee:
             return self._json_response({"error": "matched_employee_id_required"}, status=400)
 
-        log_accepted = bool(employee) and accepted and match_score >= threshold
+        if accepted and not liveness_passed and not failure_reason:
+            failure_reason = "liveness_failed"
+
+        log_accepted = bool(employee) and accepted and match_score >= threshold and liveness_passed
         if accepted and employee and match_score < threshold and not failure_reason:
             failure_reason = "below_threshold"
 
@@ -274,6 +300,13 @@ class FaceAttendanceController(http.Controller):
                 "app_version": app_version,
                 "match_score": match_score,
                 "threshold": threshold,
+                "second_best_confidence": second_best_confidence,
+                "embedding_source": embedding_source,
+                "review_embedding_id": review_embedding_id,
+                "needs_review": needs_review,
+                "liveness_passed": liveness_passed,
+                "liveness_score": liveness_score,
+                "spoof_score": spoof_score,
                 "accepted": log_accepted,
                 "failure_reason": failure_reason,
                 "raw_payload": json.dumps(body),

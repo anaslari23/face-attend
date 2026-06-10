@@ -8,6 +8,8 @@ class AttendanceResultScreen extends StatelessWidget {
     this.time,
     this.confidence,
     this.primaryLabel = 'Back Home',
+    this.primaryIcon = Icons.home,
+    this.popToFirst = true,
     this.showRetry = true,
     super.key,
   });
@@ -18,6 +20,8 @@ class AttendanceResultScreen extends StatelessWidget {
   final DateTime? time;
   final double? confidence;
   final String primaryLabel;
+  final IconData primaryIcon;
+  final bool popToFirst;
   final bool showRetry;
 
   @override
@@ -100,17 +104,19 @@ class AttendanceResultScreen extends StatelessWidget {
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          onPressed: () => Navigator.of(
-                            context,
-                          ).popUntil((route) => route.isFirst),
+                          onPressed: () {
+                            if (popToFirst) {
+                              Navigator.of(
+                                context,
+                              ).popUntil((route) => route.isFirst);
+                            } else {
+                              Navigator.of(context).pop();
+                            }
+                          },
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(
-                                Icons.home,
-                                color: Colors.white,
-                                size: 20,
-                              ),
+                              Icon(primaryIcon, color: Colors.white, size: 20),
                               const SizedBox(width: 8),
                               Text(
                                 primaryLabel,

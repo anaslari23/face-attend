@@ -15,6 +15,8 @@ class FaceEmbedding:
     embedding: np.ndarray
     bbox: tuple[float, float, float, float]
     det_score: float
+    face_ratio: float | None = None
+    blur_variance: float | None = None
 
 
 class FaceEngine(ABC):
@@ -25,6 +27,10 @@ class FaceEngine(ABC):
 
     @abstractmethod
     def embed(self, image: np.ndarray) -> np.ndarray:
+        raise NotImplementedError
+
+    @abstractmethod
+    def embed_for_registration(self, image: np.ndarray) -> FaceEmbedding:
         raise NotImplementedError
 
     @abstractmethod
@@ -55,14 +61,25 @@ class InsightFaceEngine(FaceEngine):
             self._app = None
 
     def embed(self, image: np.ndarray) -> np.ndarray:
-        faces = self.embed_many(image)
+        faces = self._extract_faces(image, strict_enrollment=False)
         if not faces:
             raise FacePipelineError("no_face_detected", "No face detected.")
         if len(faces) > 1:
             raise FacePipelineError("multiple_faces_detected", "Multiple faces detected.")
         return faces[0].embedding
 
+    def embed_for_registration(self, image: np.ndarray) -> FaceEmbedding:
+        faces = self._extract_faces(image, strict_enrollment=True)
+        if not faces:
+            raise FacePipelineError("no_face_detected", "No face detected.")
+        if len(faces) > 1:
+            raise FacePipelineError("multiple_faces_detected", "Multiple faces detected.")
+        return faces[0]
+
     def embed_many(self, image: np.ndarray) -> list[FaceEmbedding]:
+        return self._extract_faces(image, strict_enrollment=False)
+
+    def _extract_faces(self, image: np.ndarray, *, strict_enrollment: bool) -> list[FaceEmbedding]:
         if self._app is None:
             raise FacePipelineError(
                 "model_unavailable",
@@ -79,17 +96,29 @@ class InsightFaceEngine(FaceEngine):
             det_score = float(getattr(face, "det_score", 0.0))
             if det_score < self.settings.detection_threshold:
                 continue
-            self._validate_face_quality(enhanced, face)
+            face_ratio, blur_variance = self._validate_face_quality(
+                enhanced,
+                face,
+                strict_enrollment=strict_enrollment,
+            )
 
             # InsightFace normed_embedding is already L2-normalized.
             embedding = normalize_embedding(np.asarray(face.normed_embedding, dtype=np.float32))
             bbox = tuple(float(value) for value in np.asarray(face.bbox, dtype=np.float32).tolist()[:4])
-            detected.append(FaceEmbedding(embedding=embedding, bbox=bbox, det_score=det_score))
+            detected.append(
+                FaceEmbedding(
+                    embedding=embedding,
+                    bbox=bbox,
+                    det_score=det_score,
+                    face_ratio=face_ratio,
+                    blur_variance=blur_variance,
+                )
+            )
         if not detected:
             raise FacePipelineError("low_detection_score", "Face detection score is below threshold.")
         return detected
 
-    def _validate_face_quality(self, image: np.ndarray, face) -> None:
+    def _validate_face_quality(self, image: np.ndarray, face, *, strict_enrollment: bool) -> tuple[float, float]:
         bbox = np.asarray(getattr(face, "bbox", []), dtype=np.float32)
         if bbox.shape[0] < 4:
             raise FacePipelineError("face_not_clear", "Face not clear.")
@@ -104,10 +133,23 @@ class InsightFaceEngine(FaceEngine):
         if face_ratio > self.settings.max_face_ratio:
             raise FacePipelineError("face_too_large", "Move slightly back.")
 
-        x1 = max(0, int(bbox[0]))
-        y1 = max(0, int(bbox[1]))
-        x2 = min(width, int(bbox[2]))
-        y2 = min(height, int(bbox[3]))
+        if strict_enrollment:
+            edge_margin = max(4.0, short_side * 0.025)
+            if (
+                bbox[0] <= edge_margin
+                or bbox[1] <= edge_margin
+                or bbox[2] >= width - edge_margin
+                or bbox[3] >= height - edge_margin
+            ):
+                raise FacePipelineError("face_cropped_tightly", "Face is cropped too tightly.")
+
+        pad = 0.18 if strict_enrollment else 0.0
+        x_pad = face_width * pad
+        y_pad = face_height * pad
+        x1 = max(0, int(bbox[0] - x_pad))
+        y1 = max(0, int(bbox[1] - y_pad))
+        x2 = min(width, int(bbox[2] + x_pad))
+        y2 = min(height, int(bbox[3] + y_pad))
         if x2 <= x1 or y2 <= y1:
             raise FacePipelineError("face_not_clear", "Face not clear.")
 
@@ -115,6 +157,7 @@ class InsightFaceEngine(FaceEngine):
         blur_variance = float(cv2.Laplacian(gray, cv2.CV_64F).var())
         if blur_variance < self.settings.min_blur_variance:
             raise FacePipelineError("face_not_clear", "Face not clear.")
+        return face_ratio, blur_variance
 
 
 class DevFaceEngine(FaceEngine):
@@ -130,6 +173,16 @@ class DevFaceEngine(FaceEngine):
         values = np.frombuffer(digest * 8, dtype=np.uint8).astype(np.float32)[:512]
         return normalize_embedding(values)
 
+    def embed_for_registration(self, image: np.ndarray) -> FaceEmbedding:
+        height, width = image.shape[:2]
+        return FaceEmbedding(
+            embedding=self.embed(image),
+            bbox=(0.0, 0.0, float(width), float(height)),
+            det_score=1.0,
+            face_ratio=1.0,
+            blur_variance=100.0,
+        )
+
     def embed_many(self, image: np.ndarray) -> list[FaceEmbedding]:
         height, width = image.shape[:2]
         return [
@@ -137,6 +190,8 @@ class DevFaceEngine(FaceEngine):
                 embedding=self.embed(image),
                 bbox=(0.0, 0.0, float(width), float(height)),
                 det_score=1.0,
+                face_ratio=1.0,
+                blur_variance=100.0,
             )
         ]
 

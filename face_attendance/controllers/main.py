@@ -244,7 +244,7 @@ class FaceAttendanceController(http.Controller):
         accepted = bool(body.get("accepted"))
         matched_employee_id = body.get("matched_employee_id")
         match_score = float(body.get("match_score") or 0.0)
-        threshold = float(body.get("threshold") or self._config("face_attendance.match_threshold", "0.82"))
+        threshold = float(body.get("threshold") or self._config("face_attendance.match_threshold", "0.70"))
         device_id = body.get("device_id") or device.device_uid
         app_version = body.get("app_version")
         failure_reason = body.get("failure_reason")
@@ -263,6 +263,10 @@ class FaceAttendanceController(http.Controller):
         if accepted and not employee:
             return self._json_response({"error": "matched_employee_id_required"}, status=400)
 
+        log_accepted = bool(employee) and accepted and match_score >= threshold
+        if accepted and employee and match_score < threshold and not failure_reason:
+            failure_reason = "below_threshold"
+
         log = request.env["face.attendance.log"].sudo().create(
             {
                 "employee_id": employee.id if employee else False,
@@ -270,7 +274,7 @@ class FaceAttendanceController(http.Controller):
                 "app_version": app_version,
                 "match_score": match_score,
                 "threshold": threshold,
-                "accepted": bool(employee) and accepted and match_score >= threshold,
+                "accepted": log_accepted,
                 "failure_reason": failure_reason,
                 "raw_payload": json.dumps(body),
             }

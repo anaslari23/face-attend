@@ -10,6 +10,7 @@
                         <field name="face_registered" readonly="1"/>
                         <field name="face_registered_date" readonly="1"/>
                         <field name="face_enrollment_count" readonly="1"/>
+                        <field name="face_sync_error" readonly="1" invisible="not face_sync_error"/>
                     </group>
                     <group>
                         <button name="action_sync_face_to_middleware" type="object" string="Sync Avatar To Middleware" class="btn-primary"/>

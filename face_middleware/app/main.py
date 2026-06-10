@@ -80,11 +80,14 @@ async def register_employee(
         )
 
     embeddings: list[np.ndarray] = []
+    registration_faces = []
     for upload in files:
         try:
             image = decode_jpeg(await upload.read(), max_file_bytes=settings.max_file_bytes)
             anti_spoofing.validate(image)
-            embeddings.append(engine.embed(image))
+            registration_face = engine.embed_for_registration(image)
+            registration_faces.append(registration_face)
+            embeddings.append(registration_face.embedding)
         except FacePipelineError as error:
             raise as_http_error(error) from error
 
@@ -98,6 +101,13 @@ async def register_employee(
     centroid = (centroid / norm).astype(np.float32)
     repository.upsert(employee_id=employee_id, employee_name=employee_name, embedding=centroid)
 
+    primary_face = registration_faces[0] if registration_faces else None
+    if primary_face:
+        left, top, right, bottom = primary_face.bbox
+        face_box = FaceBox(left=left, top=top, right=right, bottom=bottom)
+    else:
+        face_box = None
+
     return RegisterResponse(
         employee_id=employee_id,
         employee_name=employee_name,
@@ -105,6 +115,10 @@ async def register_employee(
         frames_accepted=len(embeddings),
         embedding_dimension=int(centroid.shape[0]),
         registered_at=datetime.now(timezone.utc),
+        detection_score=primary_face.det_score if primary_face else None,
+        face_box=face_box,
+        face_ratio=primary_face.face_ratio if primary_face else None,
+        blur_variance=primary_face.blur_variance if primary_face else None,
     )
 
 
@@ -131,6 +145,9 @@ async def match_employee(
             confidence=score,
             threshold=settings.match_threshold,
             timestamp=timestamp,
+            employee=MatchEmployee(employee_id=employee.employee_id, employee_name=employee.employee_name)
+            if employee
+            else None,
             reason=reason,
             second_best_confidence=second_best_score,
         )

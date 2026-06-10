@@ -2,6 +2,7 @@ import io
 
 import cv2
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 
 from app.anti_spoofing import AntiSpoofingService
@@ -77,6 +78,10 @@ def test_health_and_register_match_delete():
     assert register.status_code == 200
     assert register.json()["employee_id"] == 42
     assert register.json()["embedding_dimension"] == 512
+    assert register.json()["detection_score"] == 1.0
+    assert register.json()["face_ratio"] == 1.0
+    assert register.json()["blur_variance"] == 100.0
+    assert register.json()["face_box"]["right"] == 240.0
 
     match = client.post(
         "/match",
@@ -130,8 +135,50 @@ def test_ambiguous_match_rejected():
     assert match.status_code == 200
     payload = match.json()
     assert payload["matched"] is False
+    assert payload["employee"]["employee_id"] == 1
     assert payload["reason"] == "ambiguous_match"
     assert payload["second_best_confidence"] is not None
+
+    app.dependency_overrides.clear()
+
+
+def test_below_threshold_returns_nearest_employee_for_diagnostics():
+    settings = Settings(
+        api_key="test-key",
+        embedding_backend="dev",
+        database_url="postgresql://test:test@127.0.0.1:5432/test",
+        match_threshold=0.95,
+        ambiguity_margin=0.01,
+    )
+    repository = FakeEmbeddingRepository()
+    stored = np.zeros(512, dtype=np.float32)
+    stored[0] = 1.0
+    query = np.zeros(512, dtype=np.float32)
+    query[0] = 0.8
+    query[1] = 0.6
+    repository.records[10] = EmployeeEmbedding(10, "Nearest", stored)
+
+    class FixedFaceEngine(DevFaceEngine):
+        def embed(self, image: np.ndarray) -> np.ndarray:
+            return query
+
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_repository] = lambda: repository
+    app.dependency_overrides[get_face_engine] = lambda: FixedFaceEngine()
+    app.dependency_overrides[get_anti_spoofing_service] = lambda: AntiSpoofingService(settings)
+
+    client = TestClient(app)
+    match = client.post(
+        "/match",
+        files={"file": ("scan.jpg", io.BytesIO(_jpeg(2)), "image/jpeg")},
+        headers={"X-API-Key": "test-key"},
+    )
+    assert match.status_code == 200
+    payload = match.json()
+    assert payload["matched"] is False
+    assert payload["reason"] == "below_threshold"
+    assert payload["employee"]["employee_id"] == 10
+    assert payload["confidence"] == pytest.approx(0.8)
 
     app.dependency_overrides.clear()
 

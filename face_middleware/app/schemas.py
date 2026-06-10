@@ -12,15 +12,6 @@ class HealthResponse(BaseModel):
     antispoofing: str
 
 
-class RegisterResponse(BaseModel):
-    employee_id: int
-    employee_name: str | None = None
-    frames_received: int
-    frames_accepted: int
-    embedding_dimension: int
-    registered_at: datetime
-
-
 class MatchEmployee(BaseModel):
     employee_id: int
     employee_name: str | None = None
@@ -41,6 +32,19 @@ class FaceBox(BaseModel):
     top: float
     right: float
     bottom: float
+
+
+class RegisterResponse(BaseModel):
+    employee_id: int
+    employee_name: str | None = None
+    frames_received: int
+    frames_accepted: int
+    embedding_dimension: int
+    registered_at: datetime
+    detection_score: float | None = None
+    face_box: FaceBox | None = None
+    face_ratio: float | None = None
+    blur_variance: float | None = None
 
 
 class MultiFaceMatch(BaseModel):

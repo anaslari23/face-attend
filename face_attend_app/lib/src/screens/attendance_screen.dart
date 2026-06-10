@@ -21,7 +21,6 @@ class AttendanceScreen extends StatefulWidget {
 class _AttendanceScreenState extends State<AttendanceScreen> {
   static const _analysisInterval = Duration(milliseconds: 250);
   static const _stableFrameTarget = 3;
-  static const _defaultMatchThreshold = 0.70;
   static const _employeePunchCooldown = Duration(minutes: 2);
 
   final _faceService = FaceRecognitionService();
@@ -139,24 +138,23 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       );
       if (!mounted) return;
 
-      final nextStableFrames = result.faces.isNotEmpty ? _stableFrames + 1 : 0;
+      final singleFace = result.faces.length == 1;
+      final nextStableFrames = singleFace ? _stableFrames + 1 : 0;
       final ready = nextStableFrames >= _stableFrameTarget;
       setState(() {
         _stableFrames = nextStableFrames;
-        _faceBounds = result.faces.isEmpty
-            ? null
-            : result.faces.first.boundingBox;
+        _faceBounds = singleFace ? result.faces.first.boundingBox : null;
         _faceImageSize = result.imageSize;
-        _faceOverlays = result.faces
-            .map(
-              (face) => FaceOverlay(
-                bounds: face.boundingBox,
-                ready: ready,
-                label: ready ? 'Scanning' : null,
-              ),
-            )
-            .toList();
-        _message = _messageForMultiFaceResult(result, ready);
+        _faceOverlays = singleFace
+            ? [
+                FaceOverlay(
+                  bounds: result.faces.first.boundingBox,
+                  ready: ready,
+                  label: ready ? 'Scanning' : null,
+                ),
+              ]
+            : const [];
+        _message = _messageForSingleFaceResult(result, ready);
         _scannerState = ready ? _ScannerState.ready : _ScannerState.detecting;
       });
 
@@ -175,20 +173,13 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
-  String _messageForMultiFaceResult(
+  String _messageForSingleFaceResult(
     MultiFaceValidationResult result,
     bool ready,
   ) {
-    if (ready) {
-      return result.faces.length == 1
-          ? 'Scanning'
-          : 'Scanning ${result.faces.length} faces';
-    }
-    if (result.faces.isNotEmpty) {
-      return result.faces.length == 1
-          ? 'Hold still'
-          : '${result.faces.length} faces detected';
-    }
+    if (result.faces.length > 1) return 'One person at a time';
+    if (ready) return 'Scanning';
+    if (result.faces.length == 1) return 'Hold still';
     return result.message;
   }
 
@@ -236,79 +227,65 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           _scannerState = _ScannerState.submitting;
         });
       }
-      final multiMatch = await middleware.matchFaces(imagePath: imagePath);
+      final match = await middleware.match(imagePath: imagePath);
       await deleteImageQuietly(imagePath);
       final device = await _deviceService.identity();
       final appVersion = await _deviceService.appVersion();
       final deviceId = widget.session.deviceId.isNotEmpty
           ? widget.session.deviceId
           : device.id;
-      final acceptedMatches = multiMatch.faces
-          .where((match) => match.matched && match.employeeId != null)
-          .toList();
-      final punchedNames = <String>[];
-      for (final match in acceptedMatches) {
-        final employeeId = match.employeeId!;
-        if (_isEmployeeInCooldown(employeeId)) continue;
-        final punch = await _client.punch(
-          accepted: true,
-          matchedEmployeeId: employeeId,
-          matchScore: match.confidence,
-          threshold: match.threshold,
-          deviceId: deviceId,
-          appVersion: appVersion,
-        );
-        _lastPunchByEmployee[employeeId] = DateTime.now();
-        if (punch.accepted) {
-          punchedNames.add(
-            punch.employee?.name ??
-                match.employeeName ??
-                'Employee $employeeId',
-          );
-        }
-      }
-      if (acceptedMatches.isEmpty) {
-        await _client.punch(
-          accepted: false,
-          matchScore: 0,
-          threshold: _defaultMatchThreshold,
-          deviceId: deviceId,
-          appVersion: appVersion,
-          failureReason: multiMatch.faces.isEmpty
-              ? 'no_face_detected'
-              : multiMatch.faces
-                    .map((face) => face.reason ?? 'unmatched')
-                    .join(','),
-        );
+      final accepted = match.matched && match.employeeId != null;
+      final inCooldown = accepted && _isEmployeeInCooldown(match.employeeId!);
+      final punch = await _client.punch(
+        accepted: accepted && !inCooldown,
+        matchedEmployeeId: match.employeeId,
+        matchScore: match.confidence,
+        threshold: match.threshold,
+        deviceId: deviceId,
+        appVersion: appVersion,
+        failureReason: accepted
+            ? inCooldown
+                  ? 'cooldown'
+                  : null
+            : match.reason ?? 'below_threshold',
+      );
+      if (accepted && !inCooldown) {
+        _lastPunchByEmployee[match.employeeId!] = DateTime.now();
       }
       if (!mounted) return;
-      _showServerFaceLabels(multiMatch);
-      if (punchedNames.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${punchedNames.join(', ')} logged')),
-        );
-        await Future<void>.delayed(const Duration(milliseconds: 1500));
-      } else if (acceptedMatches.isEmpty) {
-        await Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => AttendanceResultScreen(
-              success: false,
-              title: 'Face match failed',
-              message: 'Could not identify employee',
-              time: DateTime.now(),
-              confidence: 0,
-              showRetry: true,
-            ),
+      _showSingleFaceLabel(match, punch);
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AttendanceResultScreen(
+            success: punch.accepted,
+            title: punch.accepted
+                ? punch.punchType == 'check_out'
+                      ? 'Checked out'
+                      : 'Checked in'
+                : 'Face match failed',
+            message: punch.accepted
+                ? '${punch.employee?.name ?? match.employeeName ?? 'Employee'} #${punch.employee?.id ?? match.employeeId} was ${punch.punchType == 'check_out' ? 'checked out' : 'checked in'}.'
+                : _messageForRejectedMatch(
+                    match,
+                    inCooldown ? 'cooldown' : match.reason,
+                  ),
+            time: DateTime.now(),
+            confidence: match.confidence,
+            primaryLabel: 'Scan Again',
+            primaryIcon: Icons.refresh,
+            popToFirst: false,
+            showRetry: false,
           ),
-        );
-      } else {
-        await Future<void>.delayed(const Duration(milliseconds: 1000));
-      }
+        ),
+      );
       if (!mounted) return;
       _pauseAfterScan(
-        punchedNames.isNotEmpty
-            ? '${punchedNames.join(', ')} logged'
-            : 'Scan complete',
+        punch.accepted
+            ? '${punch.employee?.name ?? match.employeeName ?? 'Employee'} logged'
+            : _messageForRejectedMatch(
+                match,
+                inCooldown ? 'cooldown' : match.reason,
+              ),
       );
     } catch (error) {
       await deleteImageQuietly(imagePath);
@@ -349,31 +326,59 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     return DateTime.now().difference(lastPunch) < _employeePunchCooldown;
   }
 
-  void _showServerFaceLabels(MultiFaceMatchResult result) {
+  void _showSingleFaceLabel(FaceMatchResult match, PunchResult punch) {
     if (!mounted) return;
     setState(() {
-      _faceImageSize = Size(
-        result.imageWidth.toDouble(),
-        result.imageHeight.toDouble(),
-      );
-      _faceBounds = null;
-      _faceOverlays = result.faces
-          .where((match) => match.boundingBox != null)
-          .map((match) {
-            final box = match.boundingBox!;
-            return FaceOverlay(
-              bounds: Rect.fromLTRB(box.left, box.top, box.right, box.bottom),
-              ready: match.matched,
-              label: match.matched
-                  ? '${match.employeeName ?? 'Employee'} #${match.employeeId}'
-                  : 'Unknown',
-            );
-          })
-          .toList();
-      _message = result.faces.isEmpty
-          ? 'No face detected'
-          : '${result.faces.length} face${result.faces.length == 1 ? '' : 's'} scanned';
+      _faceOverlays = _faceBounds == null
+          ? const []
+          : [
+              FaceOverlay(
+                bounds: _faceBounds!,
+                ready: punch.accepted,
+                label: punch.accepted
+                    ? '${punch.employee?.name ?? match.employeeName ?? 'Employee'} #${punch.employee?.id ?? match.employeeId}'
+                    : 'Unknown',
+              ),
+            ];
+      _message = punch.accepted
+          ? '${punch.employee?.name ?? match.employeeName ?? 'Employee'} logged'
+          : _messageForMatchReason(match.reason);
     });
+  }
+
+  String _messageForMatchReason(String? reason) {
+    switch (reason) {
+      case 'cooldown':
+        return 'Already scanned recently';
+      case 'below_threshold':
+        return 'Match confidence too low';
+      case 'ambiguous_match':
+        return 'Could not identify employee';
+      case 'no_registered_embeddings':
+        return 'No registered employees found';
+      case 'no_face_detected':
+        return 'No face detected';
+      case 'multiple_faces_detected':
+        return 'One person at a time';
+      case 'face_not_clear':
+      case 'low_detection_score':
+        return 'Face not clear';
+      case 'face_too_small':
+        return 'Move closer to the camera';
+      case 'face_too_large':
+        return 'Move slightly back';
+      default:
+        return 'Could not identify employee';
+    }
+  }
+
+  String _messageForRejectedMatch(FaceMatchResult match, String? reason) {
+    final message = _messageForMatchReason(reason);
+    if (match.employeeName == null || reason == 'cooldown') return message;
+    final confidence = (match.confidence * 100)
+        .clamp(0, 100)
+        .toStringAsFixed(1);
+    return '$message. Closest: ${match.employeeName} ($confidence%).';
   }
 
   @override

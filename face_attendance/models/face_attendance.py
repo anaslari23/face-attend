@@ -43,7 +43,7 @@ class FaceAttendanceConfig(models.Model):
     api_key = fields.Char(copy=False)
     confidence_threshold = fields.Float(default=0.70)
     liveness_required = fields.Boolean(default=True)
-    anti_spoofing_required = fields.Boolean(default=False)
+    anti_spoofing_required = fields.Boolean(default=True)
     active = fields.Boolean(default=True)
     notes = fields.Text()
 
@@ -78,6 +78,7 @@ class FaceAttendanceDevice(models.Model):
     employee_id = fields.Many2one("hr.employee", index=True, ondelete="cascade")
     device_uid = fields.Char(required=True, index=True)
     token = fields.Char(required=True, index=True, copy=False, default=_default_token)
+    setup_code = fields.Char(string="Scanner Setup Code", compute="_compute_setup_code")
     token_expires_at = fields.Datetime(required=True, default=_default_token_expires_at)
     last_seen_at = fields.Datetime()
     active = fields.Boolean(default=True)
@@ -96,6 +97,10 @@ class FaceAttendanceDevice(models.Model):
         for record in self:
             record.token = secrets.token_urlsafe(48)
 
+    def _compute_setup_code(self):
+        for record in self:
+            record.setup_code = record.token
+
 
 class FaceAttendanceLog(models.Model):
     _name = "face.attendance.log"
@@ -109,6 +114,13 @@ class FaceAttendanceLog(models.Model):
     punch_type = fields.Selection([("check_in", "Check In"), ("check_out", "Check Out")])
     match_score = fields.Float(required=True)
     threshold = fields.Float(required=True)
+    second_best_confidence = fields.Float()
+    embedding_source = fields.Char()
+    review_embedding_id = fields.Integer()
+    needs_review = fields.Boolean(default=False, index=True)
+    liveness_passed = fields.Boolean(default=False, index=True)
+    liveness_score = fields.Float()
+    spoof_score = fields.Float()
     accepted = fields.Boolean(default=False, index=True)
     failure_reason = fields.Char()
     raw_payload = fields.Text()
@@ -119,3 +131,38 @@ class FaceAttendanceLog(models.Model):
     def _compute_result_label(self):
         for record in self:
             record.result_label = "Accepted" if record.accepted else record.failure_reason or "Rejected"
+
+    def action_approve_review_embedding(self):
+        for record in self:
+            if record.accepted or not record.needs_review or not record.employee_id or not record.review_embedding_id:
+                continue
+            config = self.env["face.attendance.config"].sudo().search([("active", "=", True)], limit=1)
+            if not config or not config.middleware_url or not config.api_key:
+                raise UserError(_("Configure an active Face Attendance middleware URL and API key first."))
+
+            import requests
+
+            try:
+                response = requests.post(
+                    "%s/employee/%s/embedding/%s/approve"
+                    % (config.middleware_url.rstrip("/"), record.employee_id.id, record.review_embedding_id),
+                    headers={"X-API-Key": config.api_key},
+                    timeout=30,
+                )
+                response.raise_for_status()
+                payload = response.json()
+            except requests.RequestException as error:
+                raise UserError(_("Middleware review approval failed: %s") % error) from error
+            except ValueError as error:
+                raise UserError(_("Middleware review approval failed: invalid response")) from error
+
+            if not payload.get("approved"):
+                raise UserError(_("Middleware could not approve this review candidate."))
+            record.write(
+                {
+                    "needs_review": False,
+                    "failure_reason": "review_approved",
+                    "embedding_source": "adaptive_scan",
+                }
+            )
+        return True

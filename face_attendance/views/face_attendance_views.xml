@@ -78,7 +78,8 @@
                         <group>
                             <field name="last_seen_at" readonly="1"/>
                             <field name="token_expires_at"/>
-                            <field name="token" password="True"/>
+                            <field name="setup_code" readonly="1"/>
+                            <field name="token" invisible="1"/>
                         </group>
                     </group>
                 </sheet>
@@ -96,6 +97,12 @@
                 <field name="punch_type"/>
                 <field name="match_score"/>
                 <field name="threshold"/>
+                <field name="second_best_confidence"/>
+                <field name="embedding_source"/>
+                <field name="needs_review"/>
+                <field name="liveness_passed"/>
+                <field name="liveness_score"/>
+                <field name="spoof_score"/>
                 <field name="accepted"/>
                 <field name="failure_reason"/>
                 <field name="device_uid"/>
@@ -113,6 +120,8 @@
                 <field name="failure_reason"/>
                 <filter string="Accepted" name="accepted" domain="[('accepted', '=', True)]"/>
                 <filter string="Rejected" name="rejected" domain="[('accepted', '=', False)]"/>
+                <filter string="Needs Review" name="needs_review" domain="[('needs_review', '=', True)]"/>
+                <filter string="Liveness Failed" name="liveness_failed" domain="[('liveness_passed', '=', False), ('accepted', '=', False)]"/>
                 <filter string="Check In" name="check_in" domain="[('punch_type', '=', 'check_in')]"/>
                 <filter string="Check Out" name="check_out" domain="[('punch_type', '=', 'check_out')]"/>
                 <separator/>
@@ -130,6 +139,9 @@
         <field name="model">face.attendance.log</field>
         <field name="arch" type="xml">
             <form>
+                <header>
+                    <button name="action_approve_review_embedding" type="object" string="Approve As Employee" class="btn-primary" invisible="not needs_review or accepted or not employee_id or not review_embedding_id"/>
+                </header>
                 <sheet>
                     <group>
                         <field name="employee_id"/>
@@ -138,6 +150,13 @@
                         <field name="accepted"/>
                         <field name="match_score"/>
                         <field name="threshold"/>
+                        <field name="second_best_confidence"/>
+                        <field name="embedding_source"/>
+                        <field name="needs_review"/>
+                        <field name="review_embedding_id"/>
+                        <field name="liveness_passed"/>
+                        <field name="liveness_score"/>
+                        <field name="spoof_score"/>
                         <field name="failure_reason"/>
                         <field name="device_uid"/>
                         <field name="app_version"/>

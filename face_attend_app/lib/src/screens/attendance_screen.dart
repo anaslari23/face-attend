@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
@@ -20,7 +22,8 @@ class AttendanceScreen extends StatefulWidget {
 
 class _AttendanceScreenState extends State<AttendanceScreen> {
   static const _analysisInterval = Duration(milliseconds: 250);
-  static const _stableFrameTarget = 3;
+  static const _detectionWatchdogTimeout = Duration(seconds: 2);
+  static const _stableFrameTarget = 5;
   static const _employeePunchCooldown = Duration(minutes: 2);
 
   final _faceService = FaceRecognitionService();
@@ -33,9 +36,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   Size? _faceImageSize;
   List<FaceOverlay> _faceOverlays = const [];
   DateTime _lastAnalysisAt = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastValidFrameAt = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? _detectionWatchdog;
   bool _processingFrame = false;
   bool _autoCaptureStarted = false;
   int _stableFrames = 0;
+  int _scanGeneration = 0;
   final Map<int, DateTime> _lastPunchByEmployee = {};
 
   bool get _busy =>
@@ -85,7 +91,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       setState(() {
         _message = 'Looking for a face';
         _scannerState = _ScannerState.detecting;
+        _lastValidFrameAt = DateTime.now();
       });
+      _startDetectionWatchdog();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -97,6 +105,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   @override
   void dispose() {
+    _detectionWatchdog?.cancel();
     if (_camera?.value.isStreamingImages == true) {
       _camera?.stopImageStream();
     }
@@ -117,6 +126,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Future<void> _handleCameraFrame(CameraImage image) async {
     final camera = _camera;
+    final scannerStateAtStart = _scannerState;
+    final generationAtStart = _scanGeneration;
     if (camera == null ||
         _processingFrame ||
         !_autoDetectionEnabled ||
@@ -137,6 +148,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         deviceOrientation: camera.value.deviceOrientation,
       );
       if (!mounted) return;
+      if (generationAtStart != _scanGeneration ||
+          scannerStateAtStart != _scannerState ||
+          !_autoDetectionEnabled) {
+        return;
+      }
 
       final singleFace = result.faces.length == 1;
       final nextStableFrames = singleFace ? _stableFrames + 1 : 0;
@@ -156,6 +172,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             : const [];
         _message = _messageForSingleFaceResult(result, ready);
         _scannerState = ready ? _ScannerState.ready : _ScannerState.detecting;
+        _lastValidFrameAt = DateTime.now();
       });
 
       if (ready && !_autoCaptureStarted) {
@@ -170,6 +187,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       });
     } finally {
       _processingFrame = false;
+      _clearStaleDetectionIfNeeded();
     }
   }
 
@@ -195,6 +213,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     setState(() {
       _message = 'Scanning';
       _scannerState = _ScannerState.capturing;
+      _clearFaceState();
     });
     String? imagePath;
     try {
@@ -234,7 +253,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       final deviceId = widget.session.deviceId.isNotEmpty
           ? widget.session.deviceId
           : device.id;
-      final accepted = match.matched && match.employeeId != null;
+      final liveAccepted = match.livenessPassed == true;
+      final accepted =
+          match.matched && match.employeeId != null && liveAccepted;
       final inCooldown = accepted && _isEmployeeInCooldown(match.employeeId!);
       final punch = await _client.punch(
         accepted: accepted && !inCooldown,
@@ -247,12 +268,22 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             ? inCooldown
                   ? 'cooldown'
                   : null
-            : match.reason ?? 'below_threshold',
+            : liveAccepted
+            ? match.reason ?? 'below_threshold'
+            : 'liveness_failed',
+        secondBestConfidence: match.secondBestConfidence,
+        embeddingSource: match.embeddingSource,
+        reviewEmbeddingId: match.reviewEmbeddingId,
+        needsReview: match.needsReview,
+        livenessPassed: match.livenessPassed == true,
+        livenessScore: match.livenessScore,
+        spoofScore: match.spoofScore,
       );
       if (accepted && !inCooldown) {
         _lastPunchByEmployee[match.employeeId!] = DateTime.now();
       }
       if (!mounted) return;
+      _clearFaceStateForDisplay();
       _showSingleFaceLabel(match, punch);
       await Navigator.of(context).push(
         MaterialPageRoute(
@@ -281,7 +312,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       if (!mounted) return;
       _pauseAfterScan(
         punch.accepted
-            ? '${punch.employee?.name ?? match.employeeName ?? 'Employee'} logged'
+            ? 'Scan complete'
             : _messageForRejectedMatch(
                 match,
                 inCooldown ? 'cooldown' : match.reason,
@@ -289,35 +320,64 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       );
     } catch (error) {
       await deleteImageQuietly(imagePath);
+      if (error is FaceMiddlewareException) {
+        await _logRejectedScan(error);
+      }
       if (!mounted) return;
       _pauseAfterScan(error.toString());
     }
   }
 
+  Future<void> _logRejectedScan(FaceMiddlewareException error) async {
+    final device = await _deviceService.identity();
+    final appVersion = await _deviceService.appVersion();
+    final deviceId = widget.session.deviceId.isNotEmpty
+        ? widget.session.deviceId
+        : device.id;
+    final failureReason = error.code ?? error.message;
+    try {
+      await _client.punch(
+        accepted: false,
+        matchScore: 0,
+        threshold: 0.70,
+        deviceId: deviceId,
+        appVersion: appVersion,
+        failureReason: failureReason,
+        livenessPassed: false,
+        spoofScore: failureReason == 'spoof_detected' ? 1.0 : null,
+      );
+    } catch (_) {
+      // Preserve the original scanner error for the operator.
+    }
+  }
+
   void _pauseAfterScan(String message) {
     if (!mounted) return;
+    _detectionWatchdog?.cancel();
     setState(() {
       _message = message;
       _scannerState = _ScannerState.paused;
-      _stableFrames = 0;
-      _autoCaptureStarted = false;
+      _clearFaceState();
     });
   }
 
   Future<void> _resetDetectionState({
     String message = 'Looking for a face',
   }) async {
+    final camera = _camera;
+    if (camera?.value.isStreamingImages == true) {
+      await camera?.stopImageStream();
+    }
     if (!mounted) return;
     setState(() {
       _message = message;
       _scannerState = _ScannerState.detecting;
-      _faceBounds = null;
-      _faceImageSize = null;
-      _faceOverlays = const [];
-      _stableFrames = 0;
-      _autoCaptureStarted = false;
+      _clearFaceState();
+      _processingFrame = false;
+      _lastValidFrameAt = DateTime.now();
     });
     await _startFaceDetection();
+    _startDetectionWatchdog();
   }
 
   bool _isEmployeeInCooldown(int employeeId) {
@@ -329,20 +389,49 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   void _showSingleFaceLabel(FaceMatchResult match, PunchResult punch) {
     if (!mounted) return;
     setState(() {
-      _faceOverlays = _faceBounds == null
-          ? const []
-          : [
-              FaceOverlay(
-                bounds: _faceBounds!,
-                ready: punch.accepted,
-                label: punch.accepted
-                    ? '${punch.employee?.name ?? match.employeeName ?? 'Employee'} #${punch.employee?.id ?? match.employeeId}'
-                    : 'Unknown',
-              ),
-            ];
+      _faceOverlays = const [];
       _message = punch.accepted
           ? '${punch.employee?.name ?? match.employeeName ?? 'Employee'} logged'
           : _messageForMatchReason(match.reason);
+    });
+  }
+
+  void _clearFaceState() {
+    _scanGeneration++;
+    _faceBounds = null;
+    _faceImageSize = null;
+    _faceOverlays = const [];
+    _stableFrames = 0;
+    _autoCaptureStarted = false;
+  }
+
+  void _clearFaceStateForDisplay() {
+    if (!mounted) return;
+    setState(_clearFaceState);
+  }
+
+  void _clearStaleDetectionIfNeeded() {
+    if (!mounted || !_autoDetectionEnabled) return;
+    if (DateTime.now().difference(_lastValidFrameAt) <
+        _detectionWatchdogTimeout) {
+      return;
+    }
+    setState(() {
+      _message = 'Looking for a face';
+      _scannerState = _ScannerState.detecting;
+      _faceBounds = null;
+      _faceImageSize = null;
+      _faceOverlays = const [];
+      _stableFrames = 0;
+      _autoCaptureStarted = false;
+      _lastValidFrameAt = DateTime.now();
+    });
+  }
+
+  void _startDetectionWatchdog() {
+    _detectionWatchdog?.cancel();
+    _detectionWatchdog = Timer.periodic(const Duration(milliseconds: 750), (_) {
+      _clearStaleDetectionIfNeeded();
     });
   }
 
@@ -373,6 +462,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   }
 
   String _messageForRejectedMatch(FaceMatchResult match, String? reason) {
+    if (match.needsReview && match.employeeName != null) {
+      final confidence = (match.confidence * 100)
+          .clamp(0, 100)
+          .toStringAsFixed(1);
+      return 'Could not verify. Closest: ${match.employeeName} ($confidence%). Try removing glare and look straight.';
+    }
     final message = _messageForMatchReason(reason);
     if (match.employeeName == null || reason == 'cooldown') return message;
     final confidence = (match.confidence * 100)

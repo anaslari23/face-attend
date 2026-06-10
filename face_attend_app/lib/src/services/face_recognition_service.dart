@@ -167,6 +167,7 @@ class FaceRecognitionService {
           DetectedFace(
             boundingBox: validation.boundingBox!,
             qualityScore: validation.qualityScore,
+            yawEstimate: _yawEstimate(face),
           ),
         );
       } else if (validation.error != null) {
@@ -245,6 +246,18 @@ class FaceRecognitionService {
         min(imageSize.width, imageSize.height);
     return (sizeScore - centerOffset).clamp(0.0, 1.0);
   }
+
+  double _yawEstimate(mp.Face face) {
+    final landmarks = face.landmarks;
+    final leftEye = landmarks.leftEye;
+    final rightEye = landmarks.rightEye;
+    final nose = landmarks.noseTip;
+    if (leftEye == null || rightEye == null || nose == null) return 0;
+    final eyeCenterX = (leftEye.x + rightEye.x) / 2;
+    final eyeDistance = (leftEye.x - rightEye.x).abs();
+    if (eyeDistance <= 0) return 0;
+    return ((nose.x - eyeCenterX) / eyeDistance).clamp(-1.0, 1.0);
+  }
 }
 
 class FaceValidationResult {
@@ -302,8 +315,13 @@ class MultiFaceValidationResult {
 }
 
 class DetectedFace {
-  const DetectedFace({required this.boundingBox, required this.qualityScore});
+  const DetectedFace({
+    required this.boundingBox,
+    required this.qualityScore,
+    required this.yawEstimate,
+  });
 
   final Rect boundingBox;
   final double qualityScore;
+  final double yawEstimate;
 }

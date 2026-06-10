@@ -73,7 +73,9 @@ curl -X POST http://localhost:8019/match \
 
 ## Anti-Spoofing
 
-`FACE_MIDDLEWARE_ANTI_SPOOFING_ENABLED=false` keeps anti-spoofing disabled.
-When enabled with `FACE_MIDDLEWARE_ALLOW_ANTISPOOF_STUB=true`, the service keeps
-the interface active without blocking requests. Set the stub flag to `false`
-only after a production anti-spoofing model has been integrated.
+`FACE_MIDDLEWARE_ANTI_SPOOFING_ENABLED=true` makes `/match` and `/match/faces`
+fail closed unless passive liveness passes. Place the production ONNX model at
+`FACE_MIDDLEWARE_ANTISPOOF_MODEL_PATH` and keep
+`FACE_MIDDLEWARE_ALLOW_ANTISPOOF_STUB=false` for real attendance use. Avatar
+registration through `/register` intentionally skips anti-spoofing because Odoo
+avatars are stored photos.

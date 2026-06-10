@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     embedding_backend: str = Field(default="insightface", pattern="^(insightface|dev)$")
     database_url: str = "postgresql://face_attend:face_attend@127.0.0.1:5432/face_attend"
     match_threshold: float = 0.70
+    review_threshold: float = 0.60
+    adaptive_update_threshold: float = 0.78
+    max_employee_embeddings: int = 5
     ambiguity_margin: float = 0.08
     detection_threshold: float = 0.6
     min_face_ratio: float = 0.18
@@ -19,6 +22,8 @@ class Settings(BaseSettings):
     max_file_bytes: int = 5 * 1024 * 1024
     anti_spoofing_enabled: bool = False
     allow_antispoof_stub: bool = True
+    antispoof_model_path: str = "models/anti_spoofing/silent_face"
+    antispoof_threshold: float = 0.50
 
 
 @lru_cache

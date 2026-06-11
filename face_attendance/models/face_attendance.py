@@ -125,7 +125,15 @@ class FaceAttendanceLog(models.Model):
     failure_reason = fields.Char()
     raw_payload = fields.Text()
 
+    employee_odoo_id = fields.Integer(string="Employee ID", compute="_compute_employee_display", store=True)
+    employee_name = fields.Char(string="Employee Name", compute="_compute_employee_display", store=True)
     result_label = fields.Char(compute="_compute_result_label")
+
+    @api.depends("employee_id", "employee_id.name")
+    def _compute_employee_display(self):
+        for record in self:
+            record.employee_odoo_id = record.employee_id.id if record.employee_id else False
+            record.employee_name = record.employee_id.name if record.employee_id else False
 
     @api.depends("accepted", "failure_reason")
     def _compute_result_label(self):

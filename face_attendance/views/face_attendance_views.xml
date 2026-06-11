@@ -91,21 +91,11 @@
         <field name="name">face.attendance.log.tree</field>
         <field name="model">face.attendance.log</field>
         <field name="arch" type="xml">
-            <list decoration-success="accepted" decoration-danger="not accepted">
-                <field name="create_date"/>
-                <field name="employee_id"/>
-                <field name="punch_type"/>
-                <field name="match_score"/>
-                <field name="threshold"/>
-                <field name="second_best_confidence"/>
-                <field name="embedding_source"/>
-                <field name="needs_review"/>
-                <field name="liveness_passed"/>
-                <field name="liveness_score"/>
-                <field name="spoof_score"/>
-                <field name="accepted"/>
-                <field name="failure_reason"/>
-                <field name="device_uid"/>
+            <list>
+                <field name="create_date" string="Scan Time"/>
+                <field name="employee_odoo_id"/>
+                <field name="employee_name"/>
+                <field name="device_uid" string="Device ID"/>
             </list>
         </field>
     </record>
@@ -115,20 +105,13 @@
         <field name="model">face.attendance.log</field>
         <field name="arch" type="xml">
             <search>
-                <field name="employee_id"/>
-                <field name="device_uid"/>
-                <field name="failure_reason"/>
-                <filter string="Accepted" name="accepted" domain="[('accepted', '=', True)]"/>
-                <filter string="Rejected" name="rejected" domain="[('accepted', '=', False)]"/>
-                <filter string="Needs Review" name="needs_review" domain="[('needs_review', '=', True)]"/>
-                <filter string="Liveness Failed" name="liveness_failed" domain="[('liveness_passed', '=', False), ('accepted', '=', False)]"/>
-                <filter string="Check In" name="check_in" domain="[('punch_type', '=', 'check_in')]"/>
-                <filter string="Check Out" name="check_out" domain="[('punch_type', '=', 'check_out')]"/>
+                <field name="employee_odoo_id"/>
+                <field name="employee_name"/>
+                <field name="device_uid" string="Device ID"/>
                 <separator/>
                 <filter string="Today" name="today" domain="[('create_date', '&gt;=', context_today().strftime('%Y-%m-%d 00:00:00'))]"/>
-                <filter string="Employee" name="group_employee" context="{'group_by': 'employee_id'}"/>
-                <filter string="Punch Type" name="group_punch" context="{'group_by': 'punch_type'}"/>
-                <filter string="Accepted" name="group_accepted" context="{'group_by': 'accepted'}"/>
+                <filter string="Employee" name="group_employee" context="{'group_by': 'employee_name'}"/>
+                <filter string="Device ID" name="group_device" context="{'group_by': 'device_uid'}"/>
                 <filter string="Date" name="group_date" context="{'group_by': 'create_date:day'}"/>
             </search>
         </field>
@@ -139,30 +122,12 @@
         <field name="model">face.attendance.log</field>
         <field name="arch" type="xml">
             <form>
-                <header>
-                    <button name="action_approve_review_embedding" type="object" string="Approve As Employee" class="btn-primary" invisible="not needs_review or accepted or not employee_id or not review_embedding_id"/>
-                </header>
                 <sheet>
                     <group>
-                        <field name="employee_id"/>
-                        <field name="attendance_id"/>
-                        <field name="punch_type"/>
-                        <field name="accepted"/>
-                        <field name="match_score"/>
-                        <field name="threshold"/>
-                        <field name="second_best_confidence"/>
-                        <field name="embedding_source"/>
-                        <field name="needs_review"/>
-                        <field name="review_embedding_id"/>
-                        <field name="liveness_passed"/>
-                        <field name="liveness_score"/>
-                        <field name="spoof_score"/>
-                        <field name="failure_reason"/>
-                        <field name="device_uid"/>
-                        <field name="app_version"/>
-                    </group>
-                    <group string="Payload">
-                        <field name="raw_payload" nolabel="1"/>
+                        <field name="create_date" string="Scan Time" readonly="1"/>
+                        <field name="employee_odoo_id" readonly="1"/>
+                        <field name="employee_name" readonly="1"/>
+                        <field name="device_uid" string="Device ID" readonly="1"/>
                     </group>
                 </sheet>
             </form>

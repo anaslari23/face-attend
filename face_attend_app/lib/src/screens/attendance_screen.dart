@@ -250,9 +250,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       await deleteImageQuietly(imagePath);
       final device = await _deviceService.identity();
       final appVersion = await _deviceService.appVersion();
-      final deviceId = widget.session.deviceId.isNotEmpty
-          ? widget.session.deviceId
-          : device.id;
       final liveAccepted = match.livenessPassed == true;
       final accepted =
           match.matched && match.employeeId != null && liveAccepted;
@@ -262,7 +259,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         matchedEmployeeId: match.employeeId,
         matchScore: match.confidence,
         threshold: match.threshold,
-        deviceId: deviceId,
+        deviceId: device.id,
         appVersion: appVersion,
         failureReason: accepted
             ? inCooldown
@@ -285,7 +282,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       if (!mounted) return;
       _clearFaceStateForDisplay();
       _showSingleFaceLabel(match, punch);
-      await Navigator.of(context).push(
+      final restartScan = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (_) => AttendanceResultScreen(
             success: punch.accepted,
@@ -310,6 +307,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         ),
       );
       if (!mounted) return;
+      if (restartScan == true) {
+        await _resetDetectionState();
+        return;
+      }
       _pauseAfterScan(
         punch.accepted
             ? 'Scan complete'
@@ -331,16 +332,13 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   Future<void> _logRejectedScan(FaceMiddlewareException error) async {
     final device = await _deviceService.identity();
     final appVersion = await _deviceService.appVersion();
-    final deviceId = widget.session.deviceId.isNotEmpty
-        ? widget.session.deviceId
-        : device.id;
     final failureReason = error.code ?? error.message;
     try {
       await _client.punch(
         accepted: false,
         matchScore: 0,
         threshold: 0.70,
-        deviceId: deviceId,
+        deviceId: device.id,
         appVersion: appVersion,
         failureReason: failureReason,
         livenessPassed: false,

@@ -94,7 +94,7 @@ class AttendanceResultScreen extends StatelessWidget {
                               context,
                             ).popUntil((route) => route.isFirst);
                           } else {
-                            Navigator.of(context).pop();
+                            Navigator.of(context).pop(true);
                           }
                         },
                         child: Container(
@@ -127,7 +127,7 @@ class AttendanceResultScreen extends StatelessWidget {
                       if (showRetry) ...[
                         const SizedBox(height: 12),
                         _ScaleOnPress(
-                          onTap: () => Navigator.of(context).pop(),
+                          onTap: () => Navigator.of(context).pop(true),
                           child: Container(
                             height: 44, // button height
                             decoration: BoxDecoration(

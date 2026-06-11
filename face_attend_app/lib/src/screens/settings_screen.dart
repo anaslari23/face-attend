@@ -15,19 +15,21 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      appBar: AppBar(title: const Text('Settings')),
+      backgroundColor: const Color(0xFFF5F5F7),
+      appBar: AppBar(
+        title: const Text('Settings'),
+      ),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
           children: [
-            Text(
+            const Text(
               'SCANNER DETAILS',
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w600,
                 letterSpacing: 1.0,
-                color: Colors.grey.shade600,
+                color: Color(0xFF7A7A7A),
               ),
             ),
             const SizedBox(height: 10),
@@ -38,13 +40,13 @@ class SettingsScreen extends StatelessWidget {
                   label: 'Scanner Name',
                   value: session.deviceName,
                 ),
-                const Divider(height: 1, thickness: 0.5, indent: 56),
+                const Divider(height: 1, thickness: 0.5, indent: 56, color: Color(0xFFE0E0E0)),
                 _SettingsTile(
                   icon: Icons.devices,
                   label: 'Scanner Device ID',
                   value: session.deviceId,
                 ),
-                const Divider(height: 1, thickness: 0.5, indent: 56),
+                const Divider(height: 1, thickness: 0.5, indent: 56, color: Color(0xFFE0E0E0)),
                 _SettingsTile(
                   icon: Icons.vpn_key,
                   label: 'Scanner Token',
@@ -55,13 +57,13 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 24),
-            Text(
+            const Text(
               'SERVER DETAILS',
               style: TextStyle(
                 fontSize: 11,
-                fontWeight: FontWeight.bold,
+                fontWeight: FontWeight.w600,
                 letterSpacing: 1.0,
-                color: Colors.grey.shade600,
+                color: Color(0xFF7A7A7A),
               ),
             ),
             const SizedBox(height: 10),
@@ -72,12 +74,13 @@ class SettingsScreen extends StatelessWidget {
                   label: 'Odoo URL',
                   value: session.baseUrl,
                 ),
-                const Divider(height: 1, thickness: 0.5, indent: 56),
+                const Divider(height: 1, thickness: 0.5, indent: 56, color: Color(0xFFE0E0E0)),
                 _SettingsTile(
                   icon: Icons.storage,
                   label: 'Database',
                   value: session.db,
                 ),
+                const Divider(height: 1, thickness: 0.5, indent: 56, color: Color(0xFFE0E0E0)),
                 _SettingsTile(
                   icon: Icons.hub,
                   label: 'Middleware URL',
@@ -86,23 +89,33 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 32),
-            OutlinedButton.icon(
-              style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFFE74C3C),
-                side: const BorderSide(color: Color(0xFFE74C3C), width: 1.2),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              onPressed: () {
+            _ScaleOnPress(
+              onTap: () {
                 onLogout();
                 Navigator.of(context).popUntil((route) => route.isFirst);
               },
-              icon: const Icon(Icons.logout, size: 20),
-              label: const Text(
-                'Logout Session',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              child: Container(
+                height: 44,
+                decoration: BoxDecoration(
+                  border: Border.all(color: const Color(0xFFE74C3C), width: 1.0),
+                  borderRadius: BorderRadius.circular(9999),
+                ),
+                alignment: Alignment.center,
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.logout, size: 20, color: Color(0xFFE74C3C)),
+                    SizedBox(width: 8),
+                    Text(
+                      'Logout Session',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w400,
+                        color: Color(0xFFE74C3C),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -145,23 +158,51 @@ class _SettingsTile extends StatelessWidget {
     return ListTile(
       leading: Container(
         padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFF6B35).withValues(alpha: 0.1),
+        decoration: const BoxDecoration(
+          color: Color(0xFFF5F5F7),
           shape: BoxShape.circle,
         ),
-        child: Icon(icon, color: const Color(0xFFFF6B35), size: 20),
+        child: Icon(icon, color: const Color(0xFF1D1D1F), size: 20),
       ),
       title: Text(
         label,
         style: const TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w600,
-          color: Color(0xFF1E1E1E),
+          color: Color(0xFF1D1D1F),
         ),
       ),
       subtitle: Text(
         value,
-        style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+        style: const TextStyle(fontSize: 13, color: Color(0xFF7A7A7A)),
+      ),
+    );
+  }
+}
+
+class _ScaleOnPress extends StatefulWidget {
+  const _ScaleOnPress({required this.child, required this.onTap});
+  final Widget child;
+  final VoidCallback onTap;
+
+  @override
+  State<_ScaleOnPress> createState() => _ScaleOnPressState();
+}
+
+class _ScaleOnPressState extends State<_ScaleOnPress> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.95 : 1.0,
+        duration: const Duration(milliseconds: 80),
+        child: widget.child,
       ),
     );
   }

@@ -67,29 +67,33 @@ class _FaceAttendAppState extends State<FaceAttendApp> {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFFFF6B35),
-          primary: const Color(0xFFFF6B35),
-          secondary: const Color(0xFFFFC107),
+          seedColor: const Color(0xFF0066CC),
+          primary: const Color(0xFF0066CC),
+          secondary: const Color(0xFF0071E3),
         ),
         useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF8F9FA),
+        scaffoldBackgroundColor: const Color(0xFFF5F5F7), // Parchment
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.white,
-          foregroundColor: Color(0xFF1E1E1E),
+          foregroundColor: Color(0xFF1D1D1F), // Ink
           elevation: 0,
           centerTitle: true,
+          shape: Border(
+            bottom: BorderSide(color: Color(0xFFE0E0E0), width: 0.5),
+          ),
           titleTextStyle: TextStyle(
-            color: Color(0xFF1E1E1E),
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
+            color: Color(0xFF1D1D1F), // Ink
+            fontSize: 17,
+            fontWeight: FontWeight.w600,
+            letterSpacing: -0.374,
           ),
         ),
         cardTheme: CardThemeData(
           color: Colors.white,
-          elevation: 2,
-          shadowColor: Colors.black.withValues(alpha: 0.05),
+          elevation: 0,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18), // rounded.lg (18px)
+            side: const BorderSide(color: Color(0xFFE0E0E0), width: 1.0), // hairline
           ),
         ),
       ),
@@ -98,6 +102,34 @@ class _FaceAttendAppState extends State<FaceAttendApp> {
           : _session == null
           ? LoginScreen(onLoggedIn: _setSession)
           : HomeScreen(session: _session!, onLogout: _logout),
+    );
+  }
+}
+
+class ScaleOnPress extends StatefulWidget {
+  const ScaleOnPress({required this.child, required this.onTap, super.key});
+  final Widget child;
+  final VoidCallback onTap;
+
+  @override
+  State<ScaleOnPress> createState() => _ScaleOnPressState();
+}
+
+class _ScaleOnPressState extends State<ScaleOnPress> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.95 : 1.0,
+        duration: const Duration(milliseconds: 80),
+        child: widget.child,
+      ),
     );
   }
 }
@@ -140,24 +172,17 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFF6B35).withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.face_retouching_natural,
-                color: Color(0xFFFF6B35),
-                size: 20,
-              ),
+            const Icon(
+              Icons.face_retouching_natural,
+              color: Color(0xFF0066CC),
+              size: 20,
             ),
             const SizedBox(width: 8),
             const Text(
               'FaceAttend',
               style: TextStyle(
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
+                fontWeight: FontWeight.w600,
+                letterSpacing: -0.374,
               ),
             ),
           ],
@@ -166,7 +191,7 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             onPressed: _refresh,
             tooltip: 'Refresh Status',
-            icon: const Icon(Icons.sync, color: Color(0xFF555555)),
+            icon: const Icon(Icons.sync, color: Color(0xFF1D1D1F)),
           ),
           IconButton(
             onPressed: () {
@@ -180,38 +205,35 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
             tooltip: 'Settings',
-            icon: const Icon(Icons.settings, color: Color(0xFF555555)),
+            icon: const Icon(Icons.settings, color: Color(0xFF1D1D1F)),
           ),
         ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async => _refresh(),
-          color: const Color(0xFFFF6B35),
+          color: const Color(0xFF0066CC),
           child: ListView(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             children: [
               Card(
                 margin: EdgeInsets.zero,
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(20),
                   child: Row(
                     children: [
                       Container(
-                        width: 54,
-                        height: 54,
+                        width: 52,
+                        height: 52,
                         decoration: const BoxDecoration(
                           shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color(0xFFFF6B35), Color(0xFFFFC107)],
-                          ),
+                          color: Color(0xFFF5F5F7),
                         ),
                         alignment: Alignment.center,
                         child: const Icon(
                           Icons.qr_code_scanner,
-                          color: Colors.white,
+                          color: Color(0xFF0066CC),
+                          size: 26,
                         ),
                       ),
                       const SizedBox(width: 16),
@@ -222,17 +244,18 @@ class _HomeScreenState extends State<HomeScreen> {
                             Text(
                               widget.session.deviceName,
                               style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1E1E1E),
+                                fontSize: 17,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1D1D1F),
+                                letterSpacing: -0.374,
                               ),
                             ),
                             const SizedBox(height: 2),
-                            Text(
+                            const Text(
                               'Shared attendance scanner',
                               style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey.shade600,
+                                fontSize: 14,
+                                color: Color(0xFF7A7A7A),
                               ),
                             ),
                           ],
@@ -262,19 +285,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 'QUICK ACTIONS',
                 style: TextStyle(
                   fontSize: 12,
-                  fontWeight: FontWeight.bold,
+                  fontWeight: FontWeight.w600,
                   letterSpacing: 1.0,
-                  color: Colors.grey,
+                  color: Color(0xFF7A7A7A),
                 ),
               ),
               const SizedBox(height: 12),
 
               // Quick action buttons designed as modern dashboard cards
-              _QuickActionCard(
-                title: 'Scan Attendance',
-                subtitle: 'Identify employee and check in or out',
-                icon: Icons.qr_code_scanner,
-                iconColor: const Color(0xFFFF6B35),
+              ScaleOnPress(
                 onTap: () async {
                   await Navigator.of(context).push(
                     MaterialPageRoute(
@@ -283,13 +302,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   );
                   _refresh();
                 },
+                child: const _QuickActionCard(
+                  title: 'Scan Attendance',
+                  subtitle: 'Identify employee and check in or out',
+                  icon: Icons.qr_code_scanner,
+                  iconColor: Color(0xFF0066CC),
+                ),
               ),
               const SizedBox(height: 12),
-              _QuickActionCard(
-                title: 'Configuration Settings',
-                subtitle: 'View active database and session details',
-                icon: Icons.tune,
-                iconColor: Colors.blueGrey,
+              ScaleOnPress(
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -300,6 +321,12 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   );
                 },
+                child: const _QuickActionCard(
+                  title: 'Configuration Settings',
+                  subtitle: 'View active database and session details',
+                  icon: Icons.tune,
+                  iconColor: Color(0xFF7A7A7A),
+                ),
               ),
             ],
           ),
@@ -315,61 +342,56 @@ class _QuickActionCard extends StatelessWidget {
     required this.subtitle,
     required this.icon,
     required this.iconColor,
-    required this.onTap,
   });
 
   final String title;
   final String subtitle;
   final IconData icon;
   final Color iconColor;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       margin: EdgeInsets.zero,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(icon, color: iconColor, size: 28),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(11), // rounded.md (11px)
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E1E1E),
-                      ),
+              child: Icon(icon, color: iconColor, size: 28),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1D1D1F),
+                      letterSpacing: -0.374,
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey.shade600,
-                      ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF7A7A7A),
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              Icon(Icons.chevron_right, color: Colors.grey.shade400),
-            ],
-          ),
+            ),
+            const Icon(Icons.chevron_right, color: Color(0xFF7A7A7A)),
+          ],
         ),
       ),
     );
@@ -390,8 +412,8 @@ class _StatusPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColor = online
-        ? const Color(0xFF2ECC71)
-        : const Color(0xFF95A5A6);
+        ? const Color(0xFF30D158) // Apple green
+        : const Color(0xFF7A7A7A);
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -407,13 +429,6 @@ class _StatusPanel extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: statusColor,
                     shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: statusColor.withValues(alpha: 0.4),
-                        blurRadius: 6,
-                        spreadRadius: 2,
-                      ),
-                    ],
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -425,26 +440,26 @@ class _StatusPanel extends StatelessWidget {
                       : 'SCANNER OFFLINE',
                   style: TextStyle(
                     fontSize: 12,
-                    fontWeight: FontWeight.w800,
+                    fontWeight: FontWeight.w600,
                     letterSpacing: 0.5,
                     color: statusColor,
                   ),
                 ),
               ],
             ),
-            const Divider(height: 24, thickness: 0.5),
+            const Divider(height: 24, thickness: 0.5, color: Color(0xFFE0E0E0)),
             Row(
               children: [
-                Icon(Icons.devices, color: const Color(0xFFFF6B35), size: 20),
+                const Icon(Icons.devices, color: Color(0xFF0066CC), size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Device ID: $scannerId',
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.grey.shade800,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w400,
+                      color: Color(0xFF1D1D1F),
                     ),
                   ),
                 ),
@@ -465,3 +480,4 @@ class _LoadingScreen extends StatelessWidget {
     return const Scaffold(body: Center(child: CircularProgressIndicator()));
   }
 }
+

@@ -22,10 +22,10 @@ class AttendanceResultScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = success ? const Color(0xFF2ECC71) : const Color(0xFFE74C3C);
-    final icon = success ? Icons.check_circle_rounded : Icons.cancel_rounded;
+    final color = success ? const Color(0xFF30D158) : const Color(0xFFFF3B30);
+    final icon = success ? Icons.check : Icons.close;
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFFF5F5F7), // Parchment
       appBar: AppBar(
         title: const Text('Result'),
         automaticallyImplyLeading: false,
@@ -54,7 +54,7 @@ class AttendanceResultScreen extends StatelessWidget {
                             shape: BoxShape.circle,
                           ),
                           alignment: Alignment.center,
-                          child: Icon(icon, color: color, size: 48),
+                          child: Icon(icon, color: color, size: 44),
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -63,7 +63,8 @@ class AttendanceResultScreen extends StatelessWidget {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 22,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: -0.374,
                           color: color,
                         ),
                       ),
@@ -71,9 +72,9 @@ class AttendanceResultScreen extends StatelessWidget {
                       Text(
                         message,
                         textAlign: TextAlign.center,
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 14,
-                          color: Colors.grey.shade600,
+                          color: Color(0xFF7A7A7A), // ink-muted-48
                           height: 1.4,
                         ),
                       ),
@@ -82,41 +83,30 @@ class AttendanceResultScreen extends StatelessWidget {
                       const SizedBox(height: 24),
 
                       // Home Button
-                      Container(
-                        height: 48,
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFFFF6B35), Color(0xFFFFC107)],
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
+                      _ScaleOnPress(
+                        onTap: () => Navigator.of(
+                          context,
+                        ).popUntil((route) => route.isFirst),
+                        child: Container(
+                          height: 44, // button height
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF0066CC), // Action Blue
+                            borderRadius: BorderRadius.circular(9999), // pill
                           ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.transparent,
-                            shadowColor: Colors.transparent,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          onPressed: () => Navigator.of(
-                            context,
-                          ).popUntil((route) => route.isFirst),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               const Icon(
                                 Icons.home,
                                 color: Colors.white,
-                                size: 20,
+                                size: 18,
                               ),
                               const SizedBox(width: 8),
                               Text(
                                 primaryLabel,
                                 style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.bold,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w400,
                                   color: Colors.white,
                                 ),
                               ),
@@ -126,21 +116,29 @@ class AttendanceResultScreen extends StatelessWidget {
                       ),
                       if (showRetry) ...[
                         const SizedBox(height: 12),
-                        OutlinedButton.icon(
-                          style: OutlinedButton.styleFrom(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                        _ScaleOnPress(
+                          onTap: () => Navigator.of(context).pop(),
+                          child: Container(
+                            height: 44, // button height
+                            decoration: BoxDecoration(
+                              border: Border.all(color: const Color(0xFF0066CC), width: 1.0),
+                              borderRadius: BorderRadius.circular(9999), // pill
                             ),
-                            side: BorderSide(color: Colors.grey.shade300),
-                          ),
-                          onPressed: () => Navigator.of(context).pop(),
-                          icon: const Icon(Icons.refresh, size: 20),
-                          label: const Text(
-                            'Try Again',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
+                            alignment: Alignment.center,
+                            child: const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.refresh, size: 18, color: Color(0xFF0066CC)),
+                                SizedBox(width: 8),
+                                Text(
+                                  'Try Again',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w400,
+                                    color: Color(0xFF0066CC),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -169,9 +167,9 @@ class _ResultDetails extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8F9FA),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade100),
+        color: const Color(0xFFF5F5F7), // Parchment
+        borderRadius: BorderRadius.circular(11), // rounded.md (11px)
+        border: Border.all(color: const Color(0xFFE0E0E0), width: 1.0), // hairline
       ),
       child: Column(
         children: [
@@ -182,7 +180,7 @@ class _ResultDetails extends StatelessWidget {
               value: time!.toLocal().toString().substring(11, 19),
             ),
           if (time != null && confidence != null)
-            const Divider(height: 20, thickness: 0.5),
+            const Divider(height: 20, thickness: 0.5, color: Color(0xFFE0E0E0)),
           if (confidence != null)
             _DetailRow(
               icon: Icons.verified,
@@ -210,19 +208,57 @@ class _DetailRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 20, color: Theme.of(context).colorScheme.primary),
+        Icon(icon, size: 20, color: const Color(0xFF0066CC)),
         const SizedBox(width: 10),
-        Text(label, style: Theme.of(context).textTheme.labelLarge),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: Color(0xFF1D1D1F),
+          ),
+        ),
         const Spacer(),
         Flexible(
-          flex: 2,
           child: Text(
             value,
             textAlign: TextAlign.end,
             overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 14,
+              color: Color(0xFF1D1D1F),
+            ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _ScaleOnPress extends StatefulWidget {
+  const _ScaleOnPress({required this.child, required this.onTap});
+  final Widget child;
+  final VoidCallback onTap;
+
+  @override
+  State<_ScaleOnPress> createState() => _ScaleOnPressState();
+}
+
+class _ScaleOnPressState extends State<_ScaleOnPress> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.95 : 1.0,
+        duration: const Duration(milliseconds: 80),
+        child: widget.child,
+      ),
     );
   }
 }

@@ -85,7 +85,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: const Color(0xFFF5F5F7), // Parchment
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -95,22 +95,21 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Container(
-                    width: 72,
-                    height: 72,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      gradient: LinearGradient(
-                        colors: [Color(0xFFFF6B35), Color(0xFFFFC107)],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+                  Center(
+                    child: Container(
+                      width: 72,
+                      height: 72,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.white,
+                        border: Border.all(color: const Color(0xFFE0E0E0), width: 1.0),
                       ),
-                    ),
-                    alignment: Alignment.center,
-                    child: const Icon(
-                      Icons.qr_code_scanner,
-                      size: 38,
-                      color: Colors.white,
+                      alignment: Alignment.center,
+                      child: const Icon(
+                        Icons.qr_code_scanner,
+                        size: 38,
+                        color: Color(0xFF0066CC), // Action Blue
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -118,19 +117,20 @@ class _LoginScreenState extends State<LoginScreen> {
                     'FaceAttend',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF1E1E1E),
+                      fontSize: 34, // display-md
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1D1D1F), // Ink
+                      letterSpacing: -0.374,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
+                  const SizedBox(height: 6),
+                  const Text(
                     'Shared Scanner Setup',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade600,
-                      fontWeight: FontWeight.w500,
+                      fontSize: 14, // caption
+                      color: Color(0xFF7A7A7A), // ink-muted-48
+                      fontWeight: FontWeight.w400,
                     ),
                   ),
                   const SizedBox(height: 32),
@@ -143,16 +143,16 @@ class _LoginScreenState extends State<LoginScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Text(
+                            const Text(
                               'SCANNER CONFIGURATION',
                               style: TextStyle(
                                 fontSize: 11,
-                                fontWeight: FontWeight.w800,
+                                fontWeight: FontWeight.w600,
                                 letterSpacing: 1.0,
-                                color: Colors.grey.shade600,
+                                color: Color(0xFF7A7A7A),
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            const SizedBox(height: 20),
                             _field(
                               _baseUrl,
                               'Odoo Server URL',
@@ -172,7 +172,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       Icons.storage,
                                     ).copyWith(
                                       suffixIcon: IconButton(
-                                        icon: const Icon(Icons.sync, size: 20),
+                                        icon: const Icon(Icons.sync, size: 20, color: Color(0xFF7A7A7A)),
                                         onPressed: _fetchingDb
                                             ? null
                                             : _fetchDbs,
@@ -216,6 +216,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                               icon: const Icon(
                                                 Icons.search,
                                                 size: 20,
+                                                color: Color(0xFF7A7A7A),
                                               ),
                                               onPressed: _fetchDbs,
                                               tooltip: 'Fetch Databases',
@@ -231,28 +232,15 @@ class _LoginScreenState extends State<LoginScreen> {
                               obscureText: true,
                             ),
                             const SizedBox(height: 24),
-                            Container(
-                              height: 52,
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFFFF6B35),
-                                    Color(0xFFFFC107),
-                                  ],
-                                  begin: Alignment.centerLeft,
-                                  end: Alignment.centerRight,
+                            _ScaleOnPress(
+                              onTap: _loading ? () {} : _submit,
+                              child: Container(
+                                height: 44, // button height
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0066CC), // Action Blue
+                                  borderRadius: BorderRadius.circular(9999), // pill
                                 ),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.transparent,
-                                  shadowColor: Colors.transparent,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                                onPressed: _loading ? null : _submit,
+                                alignment: Alignment.center,
                                 child: _loading
                                     ? const SizedBox(
                                         width: 20,
@@ -265,8 +253,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                     : const Text(
                                         'Save Scanner',
                                         style: TextStyle(
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w400,
                                           color: Colors.white,
                                         ),
                                       ),
@@ -306,14 +294,55 @@ class _LoginScreenState extends State<LoginScreen> {
   InputDecoration _decoration(String label, IconData icon) {
     return InputDecoration(
       labelText: label,
-      prefixIcon: Icon(icon, size: 20),
+      labelStyle: const TextStyle(color: Color(0xFF7A7A7A), fontSize: 14),
+      prefixIcon: Icon(icon, size: 20, color: const Color(0xFF7A7A7A)),
+      filled: true,
+      fillColor: Colors.white,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
       border: const OutlineInputBorder(
-        borderRadius: BorderRadius.all(Radius.circular(12)),
+        borderRadius: BorderRadius.all(Radius.circular(9999)), // rounded.pill
+        borderSide: BorderSide(color: Color(0xFFE0E0E0), width: 1.0), // hairline
+      ),
+      enabledBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(9999)),
+        borderSide: BorderSide(color: Color(0xFFE0E0E0), width: 1.0),
+      ),
+      focusedBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(9999)),
+        borderSide: BorderSide(color: Color(0xFF0066CC), width: 1.5),
       ),
     );
   }
 
   String? _required(String? value) {
     return value == null || value.trim().isEmpty ? 'Required' : null;
+  }
+}
+
+class _ScaleOnPress extends StatefulWidget {
+  const _ScaleOnPress({required this.child, required this.onTap});
+  final Widget child;
+  final VoidCallback onTap;
+
+  @override
+  State<_ScaleOnPress> createState() => _ScaleOnPressState();
+}
+
+class _ScaleOnPressState extends State<_ScaleOnPress> {
+  bool _pressed = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTapDown: (_) => setState(() => _pressed = true),
+      onTapUp: (_) => setState(() => _pressed = false),
+      onTapCancel: () => setState(() => _pressed = false),
+      onTap: widget.onTap,
+      child: AnimatedScale(
+        scale: _pressed ? 0.95 : 1.0,
+        duration: const Duration(milliseconds: 80),
+        child: widget.child,
+      ),
+    );
   }
 }

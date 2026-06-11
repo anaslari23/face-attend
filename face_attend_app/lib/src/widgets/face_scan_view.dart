@@ -179,8 +179,8 @@ class _FaceGuidePainter extends CustomPainter {
 
       final rect = Rect.fromLTRB(left, top, right, bottom).inflate(18);
       final color = overlay.ready
-          ? const Color(0xFF30D158)
-          : const Color(0xFFFFC107);
+          ? const Color(0xFF30D158) // Apple green
+          : const Color(0xFF0066CC); // Action Blue
       final boxPaint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 4
@@ -206,7 +206,8 @@ class _FaceGuidePainter extends CustomPainter {
         style: const TextStyle(
           color: Colors.white,
           fontSize: 14,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.224, // caption style
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -220,9 +221,9 @@ class _FaceGuidePainter extends CustomPainter {
         textPainter.width + 18,
         textPainter.height + 10,
       ),
-      const Radius.circular(14),
+      const Radius.circular(9999), // pill shape
     );
-    final fill = Paint()..color = color.withValues(alpha: 0.92);
+    final fill = Paint()..color = const Color(0xFF1D1D1F).withValues(alpha: 0.85); // Ink base translucent
     canvas.drawRRect(labelRect, fill);
     textPainter.paint(canvas, Offset(labelRect.left + 9, labelRect.top + 5));
   }
@@ -258,9 +259,9 @@ class _ScanPrompt extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E).withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white10),
+        color: const Color(0xFF1D1D1F).withValues(alpha: 0.8), // Ink translucent
+        borderRadius: BorderRadius.circular(18), // rounded.lg (18px)
+        border: Border.all(color: Colors.white.withValues(alpha: 0.1), width: 0.5), // hairline
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -270,12 +271,12 @@ class _ScanPrompt extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF6B35).withValues(alpha: 0.2),
+                  color: Colors.white.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.face,
-                  color: Color(0xFFFF6B35),
+                  color: Colors.white,
                   size: 20,
                 ),
               ),
@@ -286,7 +287,8 @@ class _ScanPrompt extends StatelessWidget {
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 14,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.224, // caption style
                   ),
                 ),
               ),
@@ -301,7 +303,7 @@ class _ScanPrompt extends StatelessWidget {
                 minHeight: 6,
                 backgroundColor: Colors.white12,
                 valueColor: const AlwaysStoppedAnimation<Color>(
-                  Color(0xFFFF6B35),
+                  Color(0xFF2997FF), // Sky Link Blue
                 ),
               ),
             ),
@@ -316,9 +318,9 @@ class _ScanPrompt extends StatelessWidget {
                 Text(
                   '$progress/$target captured',
                   style: const TextStyle(
-                    color: Color(0xFFFFC107),
+                    color: Color(0xFF2997FF), // Sky Link Blue
                     fontSize: 11,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ],

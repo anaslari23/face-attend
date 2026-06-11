@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 class FaceScanView extends StatelessWidget {
   const FaceScanView({
     required this.message,
@@ -179,8 +181,8 @@ class _FaceGuidePainter extends CustomPainter {
 
       final rect = Rect.fromLTRB(left, top, right, bottom).inflate(18);
       final color = overlay.ready
-          ? const Color(0xFF30D158)
-          : const Color(0xFFFFC107);
+          ? FaceAttendColors.success
+          : FaceAttendColors.warning;
       final boxPaint = Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 4
@@ -206,7 +208,7 @@ class _FaceGuidePainter extends CustomPainter {
         style: const TextStyle(
           color: Colors.white,
           fontSize: 14,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -222,7 +224,7 @@ class _FaceGuidePainter extends CustomPainter {
       ),
       const Radius.circular(14),
     );
-    final fill = Paint()..color = color.withValues(alpha: 0.92);
+    final fill = Paint()..color = FaceAttendColors.overlay;
     canvas.drawRRect(labelRect, fill);
     textPainter.paint(canvas, Offset(labelRect.left + 9, labelRect.top + 5));
   }
@@ -258,9 +260,9 @@ class _ScanPrompt extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E).withValues(alpha: 0.85),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white10),
+        color: FaceAttendColors.overlay,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -270,12 +272,12 @@ class _ScanPrompt extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFF6B35).withValues(alpha: 0.2),
+                  color: FaceAttendColors.accentSoft,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.face,
-                  color: Color(0xFFFF6B35),
+                  color: FaceAttendColors.accent,
                   size: 20,
                 ),
               ),
@@ -286,7 +288,7 @@ class _ScanPrompt extends StatelessWidget {
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 14,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
@@ -301,7 +303,7 @@ class _ScanPrompt extends StatelessWidget {
                 minHeight: 6,
                 backgroundColor: Colors.white12,
                 valueColor: const AlwaysStoppedAnimation<Color>(
-                  Color(0xFFFF6B35),
+                  FaceAttendColors.accent,
                 ),
               ),
             ),
@@ -316,9 +318,9 @@ class _ScanPrompt extends StatelessWidget {
                 Text(
                   '$progress/$target captured',
                   style: const TextStyle(
-                    color: Color(0xFFFFC107),
+                    color: FaceAttendColors.warning,
                     fontSize: 11,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api/odoo_face_attendance_client.dart';
 import '../models/session.dart';
+import '../theme/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({required this.onLoggedIn, super.key});
@@ -85,7 +86,6 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F7), // Parchment
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -101,14 +101,14 @@ class _LoginScreenState extends State<LoginScreen> {
                       height: 72,
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
-                        color: Colors.white,
-                        border: Border.all(color: const Color(0xFFE0E0E0), width: 1.0),
+                        color: FaceAttendColors.accentSoft,
+                        border: Border.all(color: FaceAttendColors.border),
                       ),
                       alignment: Alignment.center,
                       child: const Icon(
                         Icons.qr_code_scanner,
                         size: 38,
-                        color: Color(0xFF0066CC), // Action Blue
+                        color: FaceAttendColors.accent,
                       ),
                     ),
                   ),
@@ -119,8 +119,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(
                       fontSize: 34, // display-md
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF1D1D1F), // Ink
-                      letterSpacing: -0.374,
+                      color: FaceAttendColors.ink,
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -129,7 +128,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14, // caption
-                      color: Color(0xFF7A7A7A), // ink-muted-48
+                      color: FaceAttendColors.muted,
                       fontWeight: FontWeight.w400,
                     ),
                   ),
@@ -149,7 +148,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                                 letterSpacing: 1.0,
-                                color: Color(0xFF7A7A7A),
+                                color: FaceAttendColors.muted,
                               ),
                             ),
                             const SizedBox(height: 20),
@@ -172,7 +171,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                       Icons.storage,
                                     ).copyWith(
                                       suffixIcon: IconButton(
-                                        icon: const Icon(Icons.sync, size: 20, color: Color(0xFF7A7A7A)),
+                                        icon: const Icon(
+                                          Icons.sync,
+                                          size: 20,
+                                          color: FaceAttendColors.muted,
+                                        ),
                                         onPressed: _fetchingDb
                                             ? null
                                             : _fetchDbs,
@@ -216,7 +219,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                               icon: const Icon(
                                                 Icons.search,
                                                 size: 20,
-                                                color: Color(0xFF7A7A7A),
+                                                color: FaceAttendColors.muted,
                                               ),
                                               onPressed: _fetchDbs,
                                               tooltip: 'Fetch Databases',
@@ -237,8 +240,8 @@ class _LoginScreenState extends State<LoginScreen> {
                               child: Container(
                                 height: 44, // button height
                                 decoration: BoxDecoration(
-                                  color: const Color(0xFF0066CC), // Action Blue
-                                  borderRadius: BorderRadius.circular(9999), // pill
+                                  color: FaceAttendColors.accent,
+                                  borderRadius: BorderRadius.circular(8),
                                 ),
                                 alignment: Alignment.center,
                                 child: _loading
@@ -294,22 +297,22 @@ class _LoginScreenState extends State<LoginScreen> {
   InputDecoration _decoration(String label, IconData icon) {
     return InputDecoration(
       labelText: label,
-      labelStyle: const TextStyle(color: Color(0xFF7A7A7A), fontSize: 14),
-      prefixIcon: Icon(icon, size: 20, color: const Color(0xFF7A7A7A)),
+      labelStyle: const TextStyle(color: FaceAttendColors.muted, fontSize: 14),
+      prefixIcon: Icon(icon, size: 20, color: FaceAttendColors.muted),
       filled: true,
-      fillColor: Colors.white,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      fillColor: FaceAttendColors.surface,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       border: const OutlineInputBorder(
-        borderRadius: BorderRadius.all(Radius.circular(9999)), // rounded.pill
-        borderSide: BorderSide(color: Color(0xFFE0E0E0), width: 1.0), // hairline
+        borderRadius: BorderRadius.all(Radius.circular(8)),
+        borderSide: BorderSide(color: FaceAttendColors.border, width: 1.0),
       ),
       enabledBorder: const OutlineInputBorder(
-        borderRadius: BorderRadius.all(Radius.circular(9999)),
-        borderSide: BorderSide(color: Color(0xFFE0E0E0), width: 1.0),
+        borderRadius: BorderRadius.all(Radius.circular(8)),
+        borderSide: BorderSide(color: FaceAttendColors.border, width: 1.0),
       ),
       focusedBorder: const OutlineInputBorder(
-        borderRadius: BorderRadius.all(Radius.circular(9999)),
-        borderSide: BorderSide(color: Color(0xFF0066CC), width: 1.5),
+        borderRadius: BorderRadius.all(Radius.circular(8)),
+        borderSide: BorderSide(color: FaceAttendColors.accent, width: 1.5),
       ),
     );
   }
@@ -339,8 +342,9 @@ class _ScaleOnPressState extends State<_ScaleOnPress> {
       onTapCancel: () => setState(() => _pressed = false),
       onTap: widget.onTap,
       child: AnimatedScale(
-        scale: _pressed ? 0.95 : 1.0,
-        duration: const Duration(milliseconds: 80),
+        scale: _pressed ? 0.98 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
         child: widget.child,
       ),
     );

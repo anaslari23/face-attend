@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 class AttendanceResultScreen extends StatelessWidget {
   const AttendanceResultScreen({
     required this.success,
@@ -26,10 +28,9 @@ class AttendanceResultScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = success ? const Color(0xFF30D158) : const Color(0xFFFF3B30);
+    final color = success ? FaceAttendColors.success : FaceAttendColors.danger;
     final icon = success ? Icons.check : Icons.close;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F7), // Parchment
       appBar: AppBar(
         title: const Text('Result'),
         automaticallyImplyLeading: false,
@@ -48,17 +49,24 @@ class AttendanceResultScreen extends StatelessWidget {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      // Status Badge
-                      Center(
-                        child: Container(
-                          width: 80,
-                          height: 80,
-                          decoration: BoxDecoration(
-                            color: color.withValues(alpha: 0.1),
-                            shape: BoxShape.circle,
+                      TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0.92, end: 1),
+                        duration: const Duration(milliseconds: 240),
+                        curve: Curves.easeOutCubic,
+                        builder: (context, scale, child) {
+                          return Transform.scale(scale: scale, child: child);
+                        },
+                        child: Center(
+                          child: Container(
+                            width: 80,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              color: color.withValues(alpha: 0.12),
+                              shape: BoxShape.circle,
+                            ),
+                            alignment: Alignment.center,
+                            child: Icon(icon, color: color, size: 44),
                           ),
-                          alignment: Alignment.center,
-                          child: Icon(icon, color: color, size: 44),
                         ),
                       ),
                       const SizedBox(height: 20),
@@ -68,7 +76,6 @@ class AttendanceResultScreen extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 22,
                           fontWeight: FontWeight.w600,
-                          letterSpacing: -0.374,
                           color: color,
                         ),
                       ),
@@ -78,15 +85,13 @@ class AttendanceResultScreen extends StatelessWidget {
                         textAlign: TextAlign.center,
                         style: const TextStyle(
                           fontSize: 14,
-                          color: Color(0xFF7A7A7A), // ink-muted-48
+                          color: FaceAttendColors.muted,
                           height: 1.4,
                         ),
                       ),
                       const SizedBox(height: 24),
                       _ResultDetails(time: time, confidence: confidence),
                       const SizedBox(height: 24),
-
-                      // Home Button
                       _ScaleOnPress(
                         onTap: () {
                           if (popToFirst) {
@@ -100,17 +105,13 @@ class AttendanceResultScreen extends StatelessWidget {
                         child: Container(
                           height: 44, // button height
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0066CC), // Action Blue
-                            borderRadius: BorderRadius.circular(9999), // pill
+                            color: FaceAttendColors.accent,
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(
-                                primaryIcon,
-                                color: Colors.white,
-                                size: 18,
-                              ),
+                              Icon(primaryIcon, color: Colors.white, size: 18),
                               const SizedBox(width: 8),
                               Text(
                                 primaryLabel,
@@ -131,21 +132,27 @@ class AttendanceResultScreen extends StatelessWidget {
                           child: Container(
                             height: 44, // button height
                             decoration: BoxDecoration(
-                              border: Border.all(color: const Color(0xFF0066CC), width: 1.0),
-                              borderRadius: BorderRadius.circular(9999), // pill
+                              border: Border.all(
+                                color: FaceAttendColors.accent,
+                              ),
+                              borderRadius: BorderRadius.circular(8),
                             ),
                             alignment: Alignment.center,
                             child: const Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(Icons.refresh, size: 18, color: Color(0xFF0066CC)),
+                                Icon(
+                                  Icons.refresh,
+                                  size: 18,
+                                  color: FaceAttendColors.accent,
+                                ),
                                 SizedBox(width: 8),
                                 Text(
                                   'Try Again',
                                   style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w400,
-                                    color: Color(0xFF0066CC),
+                                    color: FaceAttendColors.accent,
                                   ),
                                 ),
                               ],
@@ -177,9 +184,9 @@ class _ResultDetails extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F7), // Parchment
-        borderRadius: BorderRadius.circular(11), // rounded.md (11px)
-        border: Border.all(color: const Color(0xFFE0E0E0), width: 1.0), // hairline
+        color: FaceAttendColors.surfaceMuted,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: FaceAttendColors.border),
       ),
       child: Column(
         children: [
@@ -190,7 +197,11 @@ class _ResultDetails extends StatelessWidget {
               value: time!.toLocal().toString().substring(11, 19),
             ),
           if (time != null && confidence != null)
-            const Divider(height: 20, thickness: 0.5, color: Color(0xFFE0E0E0)),
+            const Divider(
+              height: 20,
+              thickness: 0.6,
+              color: FaceAttendColors.border,
+            ),
           if (confidence != null)
             _DetailRow(
               icon: Icons.verified,
@@ -218,14 +229,14 @@ class _DetailRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 20, color: const Color(0xFF0066CC)),
+        Icon(icon, size: 20, color: FaceAttendColors.accent),
         const SizedBox(width: 10),
         Text(
           label,
           style: const TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: Color(0xFF1D1D1F),
+            color: FaceAttendColors.ink,
           ),
         ),
         const Spacer(),
@@ -234,10 +245,7 @@ class _DetailRow extends StatelessWidget {
             value,
             textAlign: TextAlign.end,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 14,
-              color: Color(0xFF1D1D1F),
-            ),
+            style: const TextStyle(fontSize: 14, color: FaceAttendColors.ink),
           ),
         ),
       ],
@@ -265,8 +273,9 @@ class _ScaleOnPressState extends State<_ScaleOnPress> {
       onTapCancel: () => setState(() => _pressed = false),
       onTap: widget.onTap,
       child: AnimatedScale(
-        scale: _pressed ? 0.95 : 1.0,
-        duration: const Duration(milliseconds: 80),
+        scale: _pressed ? 0.98 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
         child: widget.child,
       ),
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/session.dart';
+import '../theme/app_theme.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({
@@ -15,10 +16,7 @@ class SettingsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F7),
-      appBar: AppBar(
-        title: const Text('Settings'),
-      ),
+      appBar: AppBar(title: const Text('Settings')),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
@@ -29,7 +27,7 @@ class SettingsScreen extends StatelessWidget {
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 1.0,
-                color: Color(0xFF7A7A7A),
+                color: FaceAttendColors.muted,
               ),
             ),
             const SizedBox(height: 10),
@@ -40,13 +38,23 @@ class SettingsScreen extends StatelessWidget {
                   label: 'Scanner Name',
                   value: session.deviceName,
                 ),
-                const Divider(height: 1, thickness: 0.5, indent: 56, color: Color(0xFFE0E0E0)),
+                const Divider(
+                  height: 1,
+                  thickness: 0.6,
+                  indent: 56,
+                  color: FaceAttendColors.border,
+                ),
                 _SettingsTile(
                   icon: Icons.devices,
                   label: 'Scanner Device ID',
                   value: session.deviceId,
                 ),
-                const Divider(height: 1, thickness: 0.5, indent: 56, color: Color(0xFFE0E0E0)),
+                const Divider(
+                  height: 1,
+                  thickness: 0.6,
+                  indent: 56,
+                  color: FaceAttendColors.border,
+                ),
                 _SettingsTile(
                   icon: Icons.vpn_key,
                   label: 'Scanner Token',
@@ -63,7 +71,7 @@ class SettingsScreen extends StatelessWidget {
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 1.0,
-                color: Color(0xFF7A7A7A),
+                color: FaceAttendColors.muted,
               ),
             ),
             const SizedBox(height: 10),
@@ -74,13 +82,23 @@ class SettingsScreen extends StatelessWidget {
                   label: 'Odoo URL',
                   value: session.baseUrl,
                 ),
-                const Divider(height: 1, thickness: 0.5, indent: 56, color: Color(0xFFE0E0E0)),
+                const Divider(
+                  height: 1,
+                  thickness: 0.6,
+                  indent: 56,
+                  color: FaceAttendColors.border,
+                ),
                 _SettingsTile(
                   icon: Icons.storage,
                   label: 'Database',
                   value: session.db,
                 ),
-                const Divider(height: 1, thickness: 0.5, indent: 56, color: Color(0xFFE0E0E0)),
+                const Divider(
+                  height: 1,
+                  thickness: 0.6,
+                  indent: 56,
+                  color: FaceAttendColors.border,
+                ),
                 _SettingsTile(
                   icon: Icons.hub,
                   label: 'Middleware URL',
@@ -97,21 +115,25 @@ class SettingsScreen extends StatelessWidget {
               child: Container(
                 height: 44,
                 decoration: BoxDecoration(
-                  border: Border.all(color: const Color(0xFFE74C3C), width: 1.0),
-                  borderRadius: BorderRadius.circular(9999),
+                  border: Border.all(color: FaceAttendColors.danger),
+                  borderRadius: BorderRadius.circular(8),
                 ),
                 alignment: Alignment.center,
                 child: const Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(Icons.logout, size: 20, color: Color(0xFFE74C3C)),
+                    Icon(
+                      Icons.logout,
+                      size: 20,
+                      color: FaceAttendColors.danger,
+                    ),
                     SizedBox(width: 8),
                     Text(
                       'Logout Session',
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w400,
-                        color: Color(0xFFE74C3C),
+                        color: FaceAttendColors.danger,
                       ),
                     ),
                   ],
@@ -159,22 +181,22 @@ class _SettingsTile extends StatelessWidget {
       leading: Container(
         padding: const EdgeInsets.all(8),
         decoration: const BoxDecoration(
-          color: Color(0xFFF5F5F7),
+          color: FaceAttendColors.surfaceMuted,
           shape: BoxShape.circle,
         ),
-        child: Icon(icon, color: const Color(0xFF1D1D1F), size: 20),
+        child: Icon(icon, color: FaceAttendColors.ink, size: 20),
       ),
       title: Text(
         label,
         style: const TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w600,
-          color: Color(0xFF1D1D1F),
+          color: FaceAttendColors.ink,
         ),
       ),
       subtitle: Text(
         value,
-        style: const TextStyle(fontSize: 13, color: Color(0xFF7A7A7A)),
+        style: const TextStyle(fontSize: 13, color: FaceAttendColors.muted),
       ),
     );
   }
@@ -200,8 +222,9 @@ class _ScaleOnPressState extends State<_ScaleOnPress> {
       onTapCancel: () => setState(() => _pressed = false),
       onTap: widget.onTap,
       child: AnimatedScale(
-        scale: _pressed ? 0.95 : 1.0,
-        duration: const Duration(milliseconds: 80),
+        scale: _pressed ? 0.98 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
         child: widget.child,
       ),
     );

@@ -6,6 +6,7 @@ import 'src/screens/attendance_screen.dart';
 import 'src/screens/login_screen.dart';
 import 'src/screens/settings_screen.dart';
 import 'src/services/secure_session_store.dart';
+import 'src/theme/app_theme.dart';
 
 void main() {
   runApp(const FaceAttendApp());
@@ -65,38 +66,7 @@ class _FaceAttendAppState extends State<FaceAttendApp> {
     return MaterialApp(
       title: 'FaceAttend',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF0066CC),
-          primary: const Color(0xFF0066CC),
-          secondary: const Color(0xFF0071E3),
-        ),
-        useMaterial3: true,
-        scaffoldBackgroundColor: const Color(0xFFF5F5F7), // Parchment
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
-          foregroundColor: Color(0xFF1D1D1F), // Ink
-          elevation: 0,
-          centerTitle: true,
-          shape: Border(
-            bottom: BorderSide(color: Color(0xFFE0E0E0), width: 0.5),
-          ),
-          titleTextStyle: TextStyle(
-            color: Color(0xFF1D1D1F), // Ink
-            fontSize: 17,
-            fontWeight: FontWeight.w600,
-            letterSpacing: -0.374,
-          ),
-        ),
-        cardTheme: CardThemeData(
-          color: Colors.white,
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18), // rounded.lg (18px)
-            side: const BorderSide(color: Color(0xFFE0E0E0), width: 1.0), // hairline
-          ),
-        ),
-      ),
+      theme: faceAttendTheme(),
       home: _loading
           ? const _LoadingScreen()
           : _session == null
@@ -126,8 +96,9 @@ class _ScaleOnPressState extends State<ScaleOnPress> {
       onTapCancel: () => setState(() => _pressed = false),
       onTap: widget.onTap,
       child: AnimatedScale(
-        scale: _pressed ? 0.95 : 1.0,
-        duration: const Duration(milliseconds: 80),
+        scale: _pressed ? 0.98 : 1.0,
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOut,
         child: widget.child,
       ),
     );
@@ -174,16 +145,13 @@ class _HomeScreenState extends State<HomeScreen> {
           children: [
             const Icon(
               Icons.face_retouching_natural,
-              color: Color(0xFF0066CC),
+              color: FaceAttendColors.accent,
               size: 20,
             ),
             const SizedBox(width: 8),
             const Text(
               'FaceAttend',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.374,
-              ),
+              style: TextStyle(fontWeight: FontWeight.w600),
             ),
           ],
         ),
@@ -191,7 +159,7 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             onPressed: _refresh,
             tooltip: 'Refresh Status',
-            icon: const Icon(Icons.sync, color: Color(0xFF1D1D1F)),
+            icon: const Icon(Icons.sync),
           ),
           IconButton(
             onPressed: () {
@@ -205,14 +173,14 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             },
             tooltip: 'Settings',
-            icon: const Icon(Icons.settings, color: Color(0xFF1D1D1F)),
+            icon: const Icon(Icons.settings),
           ),
         ],
       ),
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: () async => _refresh(),
-          color: const Color(0xFF0066CC),
+          color: FaceAttendColors.accent,
           child: ListView(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
             children: [
@@ -227,12 +195,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         height: 52,
                         decoration: const BoxDecoration(
                           shape: BoxShape.circle,
-                          color: Color(0xFFF5F5F7),
+                          color: FaceAttendColors.accentSoft,
                         ),
                         alignment: Alignment.center,
                         child: const Icon(
                           Icons.qr_code_scanner,
-                          color: Color(0xFF0066CC),
+                          color: FaceAttendColors.accent,
                           size: 26,
                         ),
                       ),
@@ -246,8 +214,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               style: const TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFF1D1D1F),
-                                letterSpacing: -0.374,
+                                color: FaceAttendColors.ink,
                               ),
                             ),
                             const SizedBox(height: 2),
@@ -255,7 +222,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               'Shared attendance scanner',
                               style: TextStyle(
                                 fontSize: 14,
-                                color: Color(0xFF7A7A7A),
+                                color: FaceAttendColors.muted,
                               ),
                             ),
                           ],
@@ -267,7 +234,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Status panel builder
               FutureBuilder<AttendanceStatus>(
                 future: _statusFuture,
                 builder: (context, snapshot) {
@@ -287,12 +253,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 1.0,
-                  color: Color(0xFF7A7A7A),
+                  color: FaceAttendColors.muted,
                 ),
               ),
               const SizedBox(height: 12),
 
-              // Quick action buttons designed as modern dashboard cards
               ScaleOnPress(
                 onTap: () async {
                   await Navigator.of(context).push(
@@ -306,7 +271,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   title: 'Scan Attendance',
                   subtitle: 'Identify employee and check in or out',
                   icon: Icons.qr_code_scanner,
-                  iconColor: Color(0xFF0066CC),
+                  iconColor: FaceAttendColors.accent,
                 ),
               ),
               const SizedBox(height: 12),
@@ -325,7 +290,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   title: 'Configuration Settings',
                   subtitle: 'View active database and session details',
                   icon: Icons.tune,
-                  iconColor: Color(0xFF7A7A7A),
+                  iconColor: FaceAttendColors.muted,
                 ),
               ),
             ],
@@ -361,7 +326,7 @@ class _QuickActionCard extends StatelessWidget {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: iconColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(11), // rounded.md (11px)
+                borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(icon, color: iconColor, size: 28),
             ),
@@ -375,8 +340,7 @@ class _QuickActionCard extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 17,
                       fontWeight: FontWeight.w600,
-                      color: Color(0xFF1D1D1F),
-                      letterSpacing: -0.374,
+                      color: FaceAttendColors.ink,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -384,13 +348,13 @@ class _QuickActionCard extends StatelessWidget {
                     subtitle,
                     style: const TextStyle(
                       fontSize: 14,
-                      color: Color(0xFF7A7A7A),
+                      color: FaceAttendColors.muted,
                     ),
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, color: Color(0xFF7A7A7A)),
+            const Icon(Icons.chevron_right, color: FaceAttendColors.muted),
           ],
         ),
       ),
@@ -412,8 +376,8 @@ class _StatusPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final statusColor = online
-        ? const Color(0xFF30D158) // Apple green
-        : const Color(0xFF7A7A7A);
+        ? FaceAttendColors.success
+        : FaceAttendColors.muted;
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -447,10 +411,18 @@ class _StatusPanel extends StatelessWidget {
                 ),
               ],
             ),
-            const Divider(height: 24, thickness: 0.5, color: Color(0xFFE0E0E0)),
+            const Divider(
+              height: 24,
+              thickness: 0.6,
+              color: FaceAttendColors.border,
+            ),
             Row(
               children: [
-                const Icon(Icons.devices, color: Color(0xFF0066CC), size: 20),
+                const Icon(
+                  Icons.devices,
+                  color: FaceAttendColors.accent,
+                  size: 20,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -459,7 +431,7 @@ class _StatusPanel extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w400,
-                      color: Color(0xFF1D1D1F),
+                      color: FaceAttendColors.ink,
                     ),
                   ),
                 ),
@@ -480,4 +452,3 @@ class _LoadingScreen extends StatelessWidget {
     return const Scaffold(body: Center(child: CircularProgressIndicator()));
   }
 }
-

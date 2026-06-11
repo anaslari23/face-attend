@@ -14,7 +14,7 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _baseUrl = TextEditingController(text: 'http://192.168.1.61:8069');
+  final _baseUrl = TextEditingController(text: 'http://192.168.1.25:8069');
   final _db = TextEditingController();
   final _setupCode = TextEditingController();
   bool _loading = false;

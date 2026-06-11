@@ -479,7 +479,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F7), // Parchment
+      backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(title: const Text('Scan Attendance')),
       body: Column(
         children: [
@@ -496,14 +496,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           ),
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.vertical(
-                top: Radius.circular(18), // rounded.lg (18px)
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
               ),
-              border: Border(
-                top: BorderSide(color: Color(0xFFE0E0E0), width: 0.5), // hairline
-              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -4),
+                ),
+              ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -512,60 +516,74 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 Text(
                   _message,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    color: Color(0xFF7A7A7A), // ink-muted-48
-                    fontWeight: FontWeight.w400,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade700,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
                 const SizedBox(height: 18),
-                _ScaleOnPress(
-                  onTap: _canScan
-                      ? _scannerState == _ScannerState.paused ||
-                                _scannerState == _ScannerState.failed
-                            ? () => _resetDetectionState()
-                            : _scan
-                      : () {},
-                  child: Container(
-                    height: 44, // button height
-                    decoration: BoxDecoration(
-                      color: _busy
-                          ? const Color(0xFFF5F5F7)
-                          : _canScan
-                              ? const Color(0xFF0066CC) // Action Blue
-                              : const Color(0xFFE0E0E0),
-                      borderRadius: BorderRadius.circular(9999), // pill
-                      border: _busy
-                          ? Border.all(color: const Color(0xFFE0E0E0), width: 1.0)
-                          : null,
+                Container(
+                  height: 52,
+                  decoration: BoxDecoration(
+                    gradient: _busy
+                        ? null
+                        : const LinearGradient(
+                            colors: [Color(0xFFFF6B35), Color(0xFFFFC107)],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          ),
+                    color: _busy ? Colors.grey.shade300 : null,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: _busy
+                        ? null
+                        : [
+                            BoxShadow(
+                              color: const Color(
+                                0xFFFF6B35,
+                              ).withValues(alpha: 0.25),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                  ),
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
-                    alignment: Alignment.center,
+                    onPressed: _canScan
+                        ? _scannerState == _ScannerState.paused ||
+                                  _scannerState == _ScannerState.failed
+                              ? () => _resetDetectionState()
+                              : _scan
+                        : null,
                     child: _busy
                         ? const SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Color(0xFF0066CC),
+                              color: Color(0xFFFF6B35),
                             ),
                           )
                         : Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(
-                                Icons.face,
-                                color: _canScan ? Colors.white : const Color(0xFF7A7A7A),
-                              ),
-                              const SizedBox(width: 8),
+                              Icon(Icons.face, color: Colors.white),
+                              SizedBox(width: 8),
                               Text(
                                 _scannerState == _ScannerState.paused ||
                                         _scannerState == _ScannerState.failed
                                     ? 'Scan Again'
                                     : 'Scan Now',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w400,
-                                  color: _canScan ? Colors.white : const Color(0xFF7A7A7A),
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
                                 ),
                               ),
                             ],
@@ -576,34 +594,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _ScaleOnPress extends StatefulWidget {
-  const _ScaleOnPress({required this.child, required this.onTap});
-  final Widget child;
-  final VoidCallback onTap;
-
-  @override
-  State<_ScaleOnPress> createState() => _ScaleOnPressState();
-}
-
-class _ScaleOnPressState extends State<_ScaleOnPress> {
-  bool _pressed = false;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTapDown: (_) => setState(() => _pressed = true),
-      onTapUp: (_) => setState(() => _pressed = false),
-      onTapCancel: () => setState(() => _pressed = false),
-      onTap: widget.onTap,
-      child: AnimatedScale(
-        scale: _pressed ? 0.95 : 1.0,
-        duration: const Duration(milliseconds: 80),
-        child: widget.child,
       ),
     );
   }

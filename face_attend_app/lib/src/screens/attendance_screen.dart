@@ -9,7 +9,6 @@ import '../models/session.dart';
 import '../screens/result_screen.dart';
 import '../services/device_service.dart';
 import '../services/face_recognition_service.dart';
-import '../theme/app_theme.dart';
 import '../widgets/face_scan_view.dart';
 
 class AttendanceScreen extends StatefulWidget {
@@ -251,6 +250,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       await deleteImageQuietly(imagePath);
       final device = await _deviceService.identity();
       final appVersion = await _deviceService.appVersion();
+      final deviceId = widget.session.deviceId.isNotEmpty
+          ? widget.session.deviceId
+          : device.id;
       final liveAccepted = match.livenessPassed == true;
       final accepted =
           match.matched && match.employeeId != null && liveAccepted;
@@ -260,7 +262,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         matchedEmployeeId: match.employeeId,
         matchScore: match.confidence,
         threshold: match.threshold,
-        deviceId: device.id,
+        deviceId: deviceId,
         appVersion: appVersion,
         failureReason: accepted
             ? inCooldown
@@ -283,7 +285,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       if (!mounted) return;
       _clearFaceStateForDisplay();
       _showSingleFaceLabel(match, punch);
-      final restartScan = await Navigator.of(context).push<bool>(
+      await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => AttendanceResultScreen(
             success: punch.accepted,
@@ -308,10 +310,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         ),
       );
       if (!mounted) return;
-      if (restartScan == true) {
-        await _resetDetectionState();
-        return;
-      }
       _pauseAfterScan(
         punch.accepted
             ? 'Scan complete'
@@ -333,13 +331,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   Future<void> _logRejectedScan(FaceMiddlewareException error) async {
     final device = await _deviceService.identity();
     final appVersion = await _deviceService.appVersion();
+    final deviceId = widget.session.deviceId.isNotEmpty
+        ? widget.session.deviceId
+        : device.id;
     final failureReason = error.code ?? error.message;
     try {
       await _client.punch(
         accepted: false,
         matchScore: 0,
         threshold: 0.70,
-        deviceId: device.id,
+        deviceId: deviceId,
         appVersion: appVersion,
         failureReason: failureReason,
         livenessPassed: false,
@@ -478,6 +479,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(title: const Text('Scan Attendance')),
       body: Column(
         children: [
@@ -495,15 +497,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
             decoration: BoxDecoration(
-              color: FaceAttendColors.surface,
+              color: Colors.white,
               borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(16),
+                top: Radius.circular(24),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: FaceAttendColors.ink.withValues(alpha: 0.06),
-                  blurRadius: 18,
-                  offset: const Offset(0, -8),
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, -4),
                 ),
               ],
             ),
@@ -514,9 +516,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 Text(
                   _message,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
-                    color: FaceAttendColors.muted,
+                    color: Colors.grey.shade700,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -524,19 +526,24 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 Container(
                   height: 52,
                   decoration: BoxDecoration(
-                    color: _busy
-                        ? FaceAttendColors.surfaceMuted
-                        : FaceAttendColors.accent,
-                    borderRadius: BorderRadius.circular(8),
+                    gradient: _busy
+                        ? null
+                        : const LinearGradient(
+                            colors: [Color(0xFFFF6B35), Color(0xFFFFC107)],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          ),
+                    color: _busy ? Colors.grey.shade300 : null,
+                    borderRadius: BorderRadius.circular(12),
                     boxShadow: _busy
                         ? null
                         : [
                             BoxShadow(
-                              color: FaceAttendColors.accent.withValues(
-                                alpha: 0.18,
-                              ),
-                              blurRadius: 14,
-                              offset: const Offset(0, 8),
+                              color: const Color(
+                                0xFFFF6B35,
+                              ).withValues(alpha: 0.25),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
                             ),
                           ],
                   ),
@@ -545,7 +552,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                       backgroundColor: Colors.transparent,
                       shadowColor: Colors.transparent,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                     onPressed: _canScan
@@ -560,14 +567,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: FaceAttendColors.accent,
+                              color: Color(0xFFFF6B35),
                             ),
                           )
                         : Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              const Icon(Icons.face, color: Colors.white),
-                              const SizedBox(width: 8),
+                              Icon(Icons.face, color: Colors.white),
+                              SizedBox(width: 8),
                               Text(
                                 _scannerState == _ScannerState.paused ||
                                         _scannerState == _ScannerState.failed

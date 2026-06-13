@@ -32,22 +32,12 @@ class _FaceAttendAppState extends State<FaceAttendApp> {
   }
 
   Future<void> _restore() async {
-    var restored = await _sessionStore.read();
-    if (restored != null && _usesLoopbackHost(restored.middlewareUrl)) {
-      await _sessionStore.clear();
-      restored = null;
-    }
+    final restored = await _sessionStore.read();
     if (!mounted) return;
     setState(() {
       _session = restored;
       _loading = false;
     });
-  }
-
-  bool _usesLoopbackHost(String url) {
-    final uri = Uri.tryParse(url);
-    final host = uri?.host.toLowerCase();
-    return host == '127.0.0.1' || host == 'localhost' || host == '::1';
   }
 
   Future<void> _setSession(MobileSession session) async {

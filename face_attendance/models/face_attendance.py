@@ -14,13 +14,16 @@ class FaceAttendanceTemplate(models.Model):
 
     employee_id = fields.Many2one("hr.employee", required=True, index=True, ondelete="cascade")
     embedding_json = fields.Text(required=True)
-    model_version = fields.Char(required=True, default="mobilefacenet-v1")
+    model_version = fields.Char(required=True, default="arcface-w600k-r50-align-v3")
     device_uid = fields.Char(index=True)
     quality_score = fields.Float()
     active = fields.Boolean(default=True, index=True)
 
     def name_get(self):
         return [(record.id, "%s - %s" % (record.employee_id.name, record.model_version)) for record in self]
+
+    def init(self):
+        self.env.cr.execute("DELETE FROM face_attendance_template")
 
 
 class FaceAttendancePhoto(models.Model):
@@ -41,8 +44,6 @@ class FaceAttendanceConfig(models.Model):
     _rec_name = "name"
 
     name = fields.Char(required=True, default="Default Face Attendance")
-    middleware_url = fields.Char(required=True, default="http://127.0.0.1:8019")
-    api_key = fields.Char(copy=False)
     confidence_threshold = fields.Float(default=0.70)
     liveness_required = fields.Boolean(default=True)
     anti_spoofing_required = fields.Boolean(default=True)
@@ -141,38 +142,3 @@ class FaceAttendanceLog(models.Model):
     def _compute_result_label(self):
         for record in self:
             record.result_label = "Accepted" if record.accepted else record.failure_reason or "Rejected"
-
-    def action_approve_review_embedding(self):
-        for record in self:
-            if record.accepted or not record.needs_review or not record.employee_id or not record.review_embedding_id:
-                continue
-            config = self.env["face.attendance.config"].sudo().search([("active", "=", True)], limit=1)
-            if not config or not config.middleware_url or not config.api_key:
-                raise UserError(_("Configure an active Face Attendance middleware URL and API key first."))
-
-            import requests
-
-            try:
-                response = requests.post(
-                    "%s/employee/%s/embedding/%s/approve"
-                    % (config.middleware_url.rstrip("/"), record.employee_id.id, record.review_embedding_id),
-                    headers={"X-API-Key": config.api_key},
-                    timeout=30,
-                )
-                response.raise_for_status()
-                payload = response.json()
-            except requests.RequestException as error:
-                raise UserError(_("Middleware review approval failed: %s") % error) from error
-            except ValueError as error:
-                raise UserError(_("Middleware review approval failed: invalid response")) from error
-
-            if not payload.get("approved"):
-                raise UserError(_("Middleware could not approve this review candidate."))
-            record.write(
-                {
-                    "needs_review": False,
-                    "failure_reason": "review_approved",
-                    "embedding_source": "adaptive_scan",
-                }
-            )
-        return True

@@ -114,9 +114,9 @@ class SettingsScreen extends StatelessWidget {
                         color: FaceAttendColors.border,
                       ),
                       _SettingsTile(
-                        icon: Icons.hub,
-                        label: 'Middleware URL',
-                        value: session.middlewareUrl,
+                        icon: Icons.memory,
+                        label: 'Recognition Mode',
+                        value: 'On-device phone ML',
                       ),
                     ],
                   ),
@@ -207,11 +207,7 @@ class _SettingsTile extends StatelessWidget {
           color: FaceAttendColors.accentSoft,
           shape: BoxShape.circle,
         ),
-        child: Icon(
-          icon,
-          color: FaceAttendColors.accent,
-          size: 20,
-        ),
+        child: Icon(icon, color: FaceAttendColors.accent, size: 20),
       ),
       title: Text(
         label,

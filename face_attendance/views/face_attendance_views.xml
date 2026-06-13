@@ -163,7 +163,6 @@
         <field name="arch" type="xml">
             <list decoration-muted="not active">
                 <field name="name"/>
-                <field name="middleware_url"/>
                 <field name="confidence_threshold"/>
                 <field name="liveness_required"/>
                 <field name="anti_spoofing_required"/>
@@ -182,10 +181,8 @@
                 </header>
                 <sheet>
                     <group>
-                        <group string="Middleware">
+                        <group string="Scanner">
                             <field name="name"/>
-                            <field name="middleware_url"/>
-                            <field name="api_key" password="True"/>
                             <field name="active"/>
                         </group>
                         <group string="Verification">

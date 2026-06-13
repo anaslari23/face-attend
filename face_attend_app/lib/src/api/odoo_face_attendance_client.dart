@@ -49,16 +49,18 @@ class OdooFaceAttendanceClient {
       extraDb: db,
     );
     final device = payload['device'] as Map<String, dynamic>;
-    final middleware = payload['middleware'] as Map<String, dynamic>;
     return MobileSession(
       baseUrl: baseUrl,
       db: db,
       token: payload['token'] as String,
-      middlewareUrl: middleware['url'] as String,
-      middlewareApiKey: middleware['api_key'] as String,
       deviceId: device['device_uid'] as String,
       deviceName: device['name'] as String,
     );
+  }
+
+  Future<ScannerEmployeeSync> scannerEmployees() async {
+    final payload = await _get('/face_attendance/scanner/employees');
+    return ScannerEmployeeSync.fromJson(payload);
   }
 
   Future<AttendanceStatus> status() async {

@@ -15,7 +15,8 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _baseUrl = TextEditingController(text: 'http://192.168.1.25:8069');
   final _db = TextEditingController();
@@ -160,7 +161,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                   AnimatedEntrance(
                     delay: const Duration(milliseconds: 200),
                     child: Container(
-                      decoration: premiumCardDecoration(shadowColor: FaceAttendColors.accent),
+                      decoration: premiumCardDecoration(
+                        shadowColor: FaceAttendColors.accent,
+                      ),
                       padding: const EdgeInsets.all(24),
                       child: Form(
                         key: _formKey,
@@ -259,14 +262,19 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 height: 50,
                                 decoration: BoxDecoration(
                                   gradient: const LinearGradient(
-                                    colors: [Color(0xFF059669), Color(0xFF10B981)],
+                                    colors: [
+                                      Color(0xFF059669),
+                                      Color(0xFF10B981),
+                                    ],
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
                                   ),
                                   borderRadius: BorderRadius.circular(12),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: const Color(0xFF10B981).withValues(alpha: 0.3),
+                                      color: const Color(
+                                        0xFF10B981,
+                                      ).withValues(alpha: 0.3),
                                       blurRadius: 12,
                                       offset: const Offset(0, 6),
                                     ),
@@ -296,7 +304,9 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                     child: FloatingWidget(
                       child: Container(
                         margin: const EdgeInsets.only(top: 24),
-                        decoration: premiumCardDecoration(shadowColor: FaceAttendColors.accent),
+                        decoration: premiumCardDecoration(
+                          shadowColor: FaceAttendColors.accent,
+                        ),
                         padding: const EdgeInsets.all(16),
                         child: Row(
                           children: [
@@ -327,7 +337,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                   ),
                                   SizedBox(height: 2),
                                   Text(
-                                    'Point the app to your Odoo Server and enter the scanner authorization code from the backend.',
+                                    'Point the app to your Odoo server and enter the scanner setup code from the backend. Face matching runs on this phone.',
                                     style: TextStyle(
                                       fontSize: 12,
                                       color: FaceAttendColors.muted,
@@ -425,23 +435,40 @@ class BiometricFaceGridPainter extends CustomPainter {
     for (int i = 0; i < count; i++) {
       final angle = i * 2 * math.pi / count;
       final dx = math.sin(animationValue * 2 * math.pi + angle) * 6.0;
-      outerOval.add(Offset(
-        cx + rx * math.cos(angle) + dx * math.sin(angle),
-        cy + ry * math.sin(angle),
-      ));
+      outerOval.add(
+        Offset(
+          cx + rx * math.cos(angle) + dx * math.sin(angle),
+          cy + ry * math.sin(angle),
+        ),
+      );
     }
 
     for (int i = 0; i < count; i++) {
       canvas.drawLine(outerOval[i], outerOval[(i + 1) % count], paint);
     }
 
-    final leftEye = Offset(cx - rx * 0.35 + math.sin(animationValue * 2 * math.pi) * 3, cy - ry * 0.15);
-    final rightEye = Offset(cx + rx * 0.35 + math.sin(animationValue * 2 * math.pi) * 3, cy - ry * 0.15);
-    final noseTip = Offset(cx + math.sin(animationValue * 2 * math.pi + 1) * 4, cy + ry * 0.1);
-    final noseBridge = Offset(cx + math.sin(animationValue * 2 * math.pi + 0.5) * 2, cy - ry * 0.12);
+    final leftEye = Offset(
+      cx - rx * 0.35 + math.sin(animationValue * 2 * math.pi) * 3,
+      cy - ry * 0.15,
+    );
+    final rightEye = Offset(
+      cx + rx * 0.35 + math.sin(animationValue * 2 * math.pi) * 3,
+      cy - ry * 0.15,
+    );
+    final noseTip = Offset(
+      cx + math.sin(animationValue * 2 * math.pi + 1) * 4,
+      cy + ry * 0.1,
+    );
+    final noseBridge = Offset(
+      cx + math.sin(animationValue * 2 * math.pi + 0.5) * 2,
+      cy - ry * 0.12,
+    );
     final mouthLeft = Offset(cx - rx * 0.22, cy + ry * 0.4);
     final mouthRight = Offset(cx + rx * 0.22, cy + ry * 0.4);
-    final mouthCenter = Offset(cx, cy + ry * 0.45 + math.cos(animationValue * 2 * math.pi) * 3);
+    final mouthCenter = Offset(
+      cx,
+      cy + ry * 0.45 + math.cos(animationValue * 2 * math.pi) * 3,
+    );
 
     canvas.drawCircle(leftEye, 2, dotPaint);
     canvas.drawCircle(rightEye, 2, dotPaint);
@@ -478,7 +505,9 @@ class BiometricFaceGridPainter extends CustomPainter {
       }
     }
 
-    final sweepY = (cy - ry) + (ry * 2 * ((math.sin(animationValue * 2 * math.pi) + 1) / 2));
+    final sweepY =
+        (cy - ry) +
+        (ry * 2 * ((math.sin(animationValue * 2 * math.pi) + 1) / 2));
     canvas.drawLine(
       Offset(cx - rx - 10, sweepY),
       Offset(cx + rx + 10, sweepY),

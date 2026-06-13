@@ -1,14 +1,15 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
-import '../api/face_middleware_client.dart';
 import '../api/odoo_face_attendance_client.dart';
 import '../models/session.dart';
 import '../screens/result_screen.dart';
 import '../services/device_service.dart';
 import '../services/face_recognition_service.dart';
+import '../services/on_device_face_matcher.dart';
 import '../widgets/face_scan_view.dart';
 
 class AttendanceScreen extends StatefulWidget {
@@ -29,6 +30,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   final _faceService = FaceRecognitionService();
   final _deviceService = DeviceService();
   late final OdooFaceAttendanceClient _client;
+  late final OnDeviceFaceMatcher _matcher;
   CameraController? _camera;
   String _message = 'Loading scanner...';
   _ScannerState _scannerState = _ScannerState.loading;
@@ -68,6 +70,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       db: widget.session.db,
       token: widget.session.token,
     );
+    _matcher = OnDeviceFaceMatcher(client: _client, faceService: _faceService);
     _init();
   }
 
@@ -86,6 +89,20 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       );
       await _camera!.initialize();
       await _faceService.initialize();
+      if (mounted) {
+        setState(() {
+          _message = 'Syncing employee faces';
+          _scannerState = _ScannerState.loading;
+        });
+      }
+      final sync = await _matcher.sync();
+      if (sync.indexedEmployees == 0) {
+        throw StateError(
+          sync.failures.isEmpty
+              ? 'No employee avatars found in Odoo'
+              : 'No usable employee faces found. ${sync.failures.first}',
+        );
+      }
       await _startFaceDetection();
       if (!mounted) return;
       setState(() {
@@ -227,7 +244,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       imagePath = null;
     } catch (error) {
       if (imagePath != null) {
-        await deleteImageQuietly(imagePath);
+        await _deleteImageQuietly(imagePath);
       }
       if (!mounted) return;
       _pauseAfterScan(error.toString());
@@ -236,24 +253,20 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Future<void> _submitCapturedImage(String imagePath) async {
     try {
-      final middleware = FaceMiddlewareClient(
-        baseUrl: widget.session.middlewareUrl,
-        apiKey: widget.session.middlewareApiKey,
-      );
       if (mounted) {
         setState(() {
-          _message = 'Submitting face match';
+          _message = 'Matching face on device';
           _scannerState = _ScannerState.submitting;
         });
       }
-      final match = await middleware.match(imagePath: imagePath);
-      await deleteImageQuietly(imagePath);
+      final match = await _matcher.matchImagePath(imagePath);
+      await _deleteImageQuietly(imagePath);
       final device = await _deviceService.identity();
       final appVersion = await _deviceService.appVersion();
       final deviceId = widget.session.deviceId.isNotEmpty
           ? widget.session.deviceId
           : device.id;
-      final liveAccepted = match.livenessPassed == true;
+      final liveAccepted = match.livenessPassed;
       final accepted =
           match.matched && match.employeeId != null && liveAccepted;
       final inCooldown = accepted && _isEmployeeInCooldown(match.employeeId!);
@@ -273,11 +286,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             : 'liveness_failed',
         secondBestConfidence: match.secondBestConfidence,
         embeddingSource: match.embeddingSource,
-        reviewEmbeddingId: match.reviewEmbeddingId,
         needsReview: match.needsReview,
-        livenessPassed: match.livenessPassed == true,
+        livenessPassed: match.livenessPassed,
         livenessScore: match.livenessScore,
-        spoofScore: match.spoofScore,
+        spoofScore: match.livenessPassed ? 0 : 1,
       );
       if (accepted && !inCooldown) {
         _lastPunchByEmployee[match.employeeId!] = DateTime.now();
@@ -319,22 +331,19 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               ),
       );
     } catch (error) {
-      await deleteImageQuietly(imagePath);
-      if (error is FaceMiddlewareException) {
-        await _logRejectedScan(error);
-      }
+      await _deleteImageQuietly(imagePath);
+      await _logRejectedScan(error.toString());
       if (!mounted) return;
       _pauseAfterScan(error.toString());
     }
   }
 
-  Future<void> _logRejectedScan(FaceMiddlewareException error) async {
+  Future<void> _logRejectedScan(String error) async {
     final device = await _deviceService.identity();
     final appVersion = await _deviceService.appVersion();
     final deviceId = widget.session.deviceId.isNotEmpty
         ? widget.session.deviceId
         : device.id;
-    final failureReason = error.code ?? error.message;
     try {
       await _client.punch(
         accepted: false,
@@ -342,9 +351,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         threshold: 0.70,
         deviceId: deviceId,
         appVersion: appVersion,
-        failureReason: failureReason,
+        failureReason: error,
         livenessPassed: false,
-        spoofScore: failureReason == 'spoof_detected' ? 1.0 : null,
+        spoofScore: 1.0,
       );
     } catch (_) {
       // Preserve the original scanner error for the operator.
@@ -386,7 +395,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     return DateTime.now().difference(lastPunch) < _employeePunchCooldown;
   }
 
-  void _showSingleFaceLabel(FaceMatchResult match, PunchResult punch) {
+  void _showSingleFaceLabel(LocalFaceMatchResult match, PunchResult punch) {
     if (!mounted) return;
     setState(() {
       _faceOverlays = const [];
@@ -461,7 +470,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
-  String _messageForRejectedMatch(FaceMatchResult match, String? reason) {
+  String _messageForRejectedMatch(LocalFaceMatchResult match, String? reason) {
     if (match.needsReview && match.employeeName != null) {
       final confidence = (match.confidence * 100)
           .clamp(0, 100)
@@ -474,6 +483,14 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         .clamp(0, 100)
         .toStringAsFixed(1);
     return '$message. Closest: ${match.employeeName} ($confidence%).';
+  }
+
+  Future<void> _deleteImageQuietly(String path) async {
+    try {
+      await File(path).delete();
+    } catch (_) {
+      // Temporary camera image cleanup best effort.
+    }
   }
 
   @override

@@ -10,8 +10,8 @@ Keep these areas aligned with `feat/ml-refine`:
 - face capture timing
 - face size and quality thresholds
 - scanner validation rules
-- middleware match flow
-- InsightFace matching threshold behavior
+- on-device ArcFace match flow
+- InsightFace-compatible matching threshold behavior
 - anti-spoofing gate behavior
 
 Allowed changes without revisiting this baseline:
@@ -22,4 +22,4 @@ Allowed changes without revisiting this baseline:
 - device ID logging
 - non-recognition UI styling that does not change scanner state or capture behavior
 
-If recognition becomes unreliable after a change, compare the scanner and middleware recognition paths back to `feat/ml-refine` first.
+If recognition becomes unreliable after a change, compare the scanner and on-device ArcFace recognition path back to `feat/ml-refine` first.

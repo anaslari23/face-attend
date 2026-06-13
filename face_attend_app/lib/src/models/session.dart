@@ -33,8 +33,6 @@ class MobileSession {
     required this.baseUrl,
     required this.db,
     required this.token,
-    required this.middlewareUrl,
-    required this.middlewareApiKey,
     required this.deviceId,
     required this.deviceName,
   });
@@ -42,8 +40,6 @@ class MobileSession {
   final String baseUrl;
   final String db;
   final String token;
-  final String middlewareUrl;
-  final String middlewareApiKey;
   final String deviceId;
   final String deviceName;
 
@@ -52,9 +48,6 @@ class MobileSession {
       baseUrl: json['base_url'] as String,
       db: json['db'] as String,
       token: json['token'] as String,
-      middlewareUrl:
-          json['middleware_url'] as String? ?? 'http://127.0.0.1:8019',
-      middlewareApiKey: json['middleware_api_key'] as String? ?? 'change-me',
       deviceId: json['device_id'] as String? ?? '',
       deviceName: json['device_name'] as String? ?? 'Shared Scanner',
     );
@@ -64,8 +57,6 @@ class MobileSession {
     'base_url': baseUrl,
     'db': db,
     'token': token,
-    'middleware_url': middlewareUrl,
-    'middleware_api_key': middlewareApiKey,
     'device_id': deviceId,
     'device_name': deviceName,
   };
@@ -151,6 +142,58 @@ class PunchResult {
           : AttendanceStatus.fromJson(
               json['attendance'] as Map<String, dynamic>,
             ),
+    );
+  }
+}
+
+class ScannerEmployeeSync {
+  const ScannerEmployeeSync({
+    required this.threshold,
+    required this.modelVersion,
+    required this.employees,
+  });
+
+  final double threshold;
+  final String modelVersion;
+  final List<ScannerEmployee> employees;
+
+  factory ScannerEmployeeSync.fromJson(Map<String, dynamic> json) {
+    return ScannerEmployeeSync(
+      threshold: (json['threshold'] as num? ?? 0.70).toDouble(),
+      modelVersion:
+          json['model_version'] as String? ?? 'arcface-w600k-r50-align-v3',
+      employees: (json['employees'] as List<dynamic>? ?? [])
+          .map((item) => ScannerEmployee.fromJson(item as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+class ScannerEmployee {
+  const ScannerEmployee({
+    required this.id,
+    required this.name,
+    required this.avatar,
+    required this.avatarWriteDate,
+    required this.faceEnabled,
+    this.department,
+  });
+
+  final int id;
+  final String name;
+  final String? department;
+  final String avatar;
+  final String avatarWriteDate;
+  final bool faceEnabled;
+
+  factory ScannerEmployee.fromJson(Map<String, dynamic> json) {
+    return ScannerEmployee(
+      id: json['id'] as int,
+      name: json['name'] as String,
+      department: json['department'] as String?,
+      avatar: json['avatar'] as String? ?? '',
+      avatarWriteDate: json['avatar_write_date']?.toString() ?? '',
+      faceEnabled: json['face_enabled'] != false,
     );
   }
 }

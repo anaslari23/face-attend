@@ -13,19 +13,8 @@
                         <field name="face_sync_error" readonly="1" invisible="not face_sync_error"/>
                     </group>
                     <group>
-                        <button name="action_sync_face_to_middleware" type="object" string="Sync Avatar To Middleware" class="btn-primary"/>
+                        <button name="action_sync_face_to_middleware" type="object" string="Prepare Avatar For Scanner" class="btn-primary"/>
                         <button name="action_reset_face_enrollment" type="object" string="Reset Face Enrollment" class="btn-secondary"/>
-                    </group>
-                    <group string="Templates">
-                        <field name="face_template_ids" readonly="1" nolabel="1">
-                            <list>
-                                <field name="model_version"/>
-                                <field name="device_uid"/>
-                                <field name="quality_score"/>
-                                <field name="active"/>
-                                <field name="create_date"/>
-                            </list>
-                        </field>
                     </group>
                     <group string="Devices">
                         <field name="face_device_ids" readonly="1" nolabel="1">

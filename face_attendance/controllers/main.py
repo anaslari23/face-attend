@@ -2,7 +2,6 @@ import json
 import logging
 import secrets
 from datetime import timedelta
-from urllib.parse import urlparse, urlunparse
 
 from odoo import fields, http
 from odoo.http import request
@@ -80,20 +79,47 @@ class FaceAttendanceController(http.Controller):
         if not device:
             return self._json_response({"error": "invalid_scanner_setup_code"}, status=401)
 
-        config = request.env["face.attendance.config"].sudo().search([("active", "=", True)], limit=1)
-        if not config or not config.middleware_url or not config.api_key:
-            return self._json_response({"error": "middleware_not_configured"}, status=400)
-
         device.last_seen_at = fields.Datetime.now()
         return self._json_response(
             {
                 "token": device.token,
                 "device": self._device_payload(device),
-                "middleware": {
-                    "url": self._public_middleware_url(config.middleware_url),
-                    "api_key": config.api_key,
-                },
                 "attendance": self._empty_status_payload(),
+            }
+        )
+
+    @http.route("/face_attendance/scanner/employees", type="http", auth="none", methods=["GET"], csrf=False)
+    def scanner_employees(self, **kwargs):
+        device, error = self._require_device()
+        if error:
+            return error
+        if device.device_type != "scanner":
+            return self._json_response({"error": "scanner_device_required"}, status=403)
+
+        employees = request.env["hr.employee"].sudo().search(
+            [("active", "=", True), ("image_1920", "!=", False)],
+            order="id",
+        )
+        payload = []
+        for employee in employees:
+            payload.append(
+                {
+                    "id": employee.id,
+                    "name": employee.name,
+                    "department": employee.department_id.name if employee.department_id else None,
+                    "avatar": employee.image_1920.decode("utf-8")
+                    if isinstance(employee.image_1920, bytes)
+                    else employee.image_1920,
+                    "avatar_write_date": employee.write_date,
+                    "face_enabled": True,
+                }
+            )
+        return self._json_response(
+            {
+                "device": self._device_payload(device),
+                "model_version": "arcface-w600k-r50-align-v3",
+                "threshold": float(self._config("face_attendance.match_threshold", "0.70")),
+                "employees": payload,
             }
         )
 
@@ -154,71 +180,11 @@ class FaceAttendanceController(http.Controller):
 
     @http.route("/face_attendance/enroll", type="http", auth="none", methods=["POST"], csrf=False)
     def enroll(self, **kwargs):
-        employee, error = self._require_employee()
-        if error:
-            return error
-        body = self._body()
-        embeddings = body.get("embeddings") or []
-        middleware_registered = bool(body.get("middleware_registered"))
-        model_version = body.get("model_version") or self._config("face_attendance.model_version", "mobilefacenet-v1")
-        device_id = body.get("device_id")
-        quality_score = float(body.get("quality_score") or 0.0)
-
-        if not middleware_registered and len(embeddings) < 3:
-            return self._json_response({"error": "at_least_three_embeddings_required"}, status=400)
-
-        normalized = []
-        if not middleware_registered:
-            for vector in embeddings:
-                if not isinstance(vector, list) or not vector:
-                    return self._json_response({"error": "invalid_embedding"}, status=400)
-                normalized.append([float(value) for value in vector])
-
-        request.env["face.attendance.template"].sudo().search(
-            [("employee_id", "=", employee.id), ("active", "=", True)]
-        ).write({"active": False})
-        template = request.env["face.attendance.template"].sudo().create(
-            {
-                "employee_id": employee.id,
-                "embedding_json": json.dumps(normalized),
-                "model_version": model_version,
-                "device_uid": device_id,
-                "quality_score": quality_score,
-                "active": True,
-            }
-        )
-        employee.sudo().write(
-            {
-                "face_registered": True,
-                "face_registered_date": fields.Datetime.now(),
-                "face_enrollment_count": employee.face_enrollment_count + 1,
-            }
-        )
-        return self._json_response({"template_id": template.id, "employee": self._employee_payload(employee)})
+        return self._json_response({"error": "phone_only_scanner_uses_avatar_sync"}, status=410)
 
     @http.route("/face_attendance/template", type="http", auth="none", methods=["GET"], csrf=False)
     def template(self, **kwargs):
-        employee, error = self._require_employee()
-        if error:
-            return error
-        template = request.env["face.attendance.template"].sudo().search(
-            [("employee_id", "=", employee.id), ("active", "=", True)],
-            limit=1,
-            order="create_date desc",
-        )
-        if not template:
-            return self._json_response({"template": None, "employee": self._employee_payload(employee)})
-        return self._json_response(
-            {
-                "employee": self._employee_payload(employee),
-                "template": {
-                    "id": template.id,
-                    "model_version": template.model_version,
-                    "threshold": float(self._config("face_attendance.match_threshold", "0.82")),
-                    "embeddings": json.loads(template.embedding_json or "[]"),
-                },
-            }
-        )
+        return self._json_response({"error": "phone_only_scanner_uses_local_embeddings"}, status=410)
 
     @http.route("/face_attendance/status", type="http", auth="none", methods=["GET"], csrf=False)
     def status(self, **kwargs):
@@ -401,14 +367,3 @@ class FaceAttendanceController(http.Controller):
 
     def _config(self, key, default):
         return request.env["ir.config_parameter"].sudo().get_param(key, default)
-
-    def _public_middleware_url(self, middleware_url):
-        parsed = urlparse(middleware_url)
-        if parsed.hostname not in ("127.0.0.1", "localhost", "::1"):
-            return middleware_url
-
-        request_host = request.httprequest.host.split(":", 1)[0]
-        netloc = request_host
-        if parsed.port:
-            netloc = "%s:%s" % (request_host, parsed.port)
-        return urlunparse((parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment))

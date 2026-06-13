@@ -1,6 +1,6 @@
-Place the production face-embedding TFLite model here, for example:
+Production phone-only face matching uses the InsightFace ArcFace model:
 
-- `mobilefacenet.tflite`
+- `w600k_r50.onnx`
 
-The current Flutter service exposes the embedding boundary and includes a deterministic
-development fallback so the API and UI can be tested before the model artifact is added.
+The Android app runs this model through ONNX Runtime after MediaPipe/BlazeFace
+face detection and InsightFace-compatible 112x112 five-point alignment.

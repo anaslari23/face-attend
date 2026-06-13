@@ -1,11 +1,16 @@
+import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart' as mp;
 import 'package:flutter/services.dart';
 
+import 'arcface_embedding_service.dart';
+
 class FaceRecognitionService {
   mp.FaceDetector? _detector;
+  final _arcFace = ArcFaceEmbeddingService();
 
   Future<void> initialize() async {
     if (_detector?.isReady == true) return;
@@ -21,6 +26,46 @@ class FaceRecognitionService {
       mode: mp.FaceDetectionMode.fast,
     );
     return _validateFaces(faces);
+  }
+
+  Future<FaceEmbeddingResult> embedImagePath(String imagePath) async {
+    final bytes = await File(imagePath).readAsBytes();
+    return embedImageBytes(bytes);
+  }
+
+  Future<FaceEmbeddingResult> embedImageBytes(Uint8List imageBytes) async {
+    final detector = await _readyDetector();
+    final faces = await detector.detectFacesFromBytes(
+      imageBytes,
+      mode: mp.FaceDetectionMode.full,
+    );
+    final validation = _validateFaces(faces);
+    if (!validation.valid) {
+      return FaceEmbeddingResult.failure(
+        validation.error ?? 'Face not clear',
+        boundingBox: validation.boundingBox,
+        imageSize: validation.imageSize,
+      );
+    }
+    final Float32List embedding;
+    try {
+      embedding = await _arcFace.embed(
+        imageBytes: imageBytes,
+        face: faces.single,
+      );
+    } catch (error) {
+      return FaceEmbeddingResult.failure(
+        'ArcFace embedding failed: $error',
+        boundingBox: validation.boundingBox,
+        imageSize: validation.imageSize,
+      );
+    }
+    return FaceEmbeddingResult.success(
+      embedding: embedding,
+      qualityScore: validation.qualityScore,
+      boundingBox: validation.boundingBox,
+      imageSize: validation.imageSize,
+    );
   }
 
   Future<FaceValidationResult> validateCameraImage({
@@ -295,6 +340,53 @@ class FaceValidationResult {
   }) {
     return FaceValidationResult._(
       valid: false,
+      error: error,
+      boundingBox: boundingBox,
+      imageSize: imageSize,
+    );
+  }
+}
+
+class FaceEmbeddingResult {
+  const FaceEmbeddingResult._({
+    required this.valid,
+    required this.qualityScore,
+    this.embedding,
+    this.error,
+    this.boundingBox,
+    this.imageSize,
+  });
+
+  final bool valid;
+  final double qualityScore;
+  final Float32List? embedding;
+  final String? error;
+  final Rect? boundingBox;
+  final Size? imageSize;
+
+  factory FaceEmbeddingResult.success({
+    required Float32List embedding,
+    required double qualityScore,
+    Rect? boundingBox,
+    Size? imageSize,
+  }) {
+    return FaceEmbeddingResult._(
+      valid: true,
+      qualityScore: qualityScore,
+      embedding: embedding,
+      boundingBox: boundingBox,
+      imageSize: imageSize,
+    );
+  }
+
+  factory FaceEmbeddingResult.failure(
+    String error, {
+    Rect? boundingBox,
+    Size? imageSize,
+  }) {
+    return FaceEmbeddingResult._(
+      valid: false,
+      qualityScore: 0,
       error: error,
       boundingBox: boundingBox,
       imageSize: imageSize,

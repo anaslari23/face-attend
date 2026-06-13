@@ -1,17 +1,31 @@
-# face_attend_app
+# FaceAttend Scanner App
 
-A new Flutter project.
+Flutter shared-scanner app for FaceAttend.
 
-## Getting Started
+The phone is the ML engine. It syncs employee avatars from Odoo, creates local ArcFace embeddings, scans one face at a time, matches locally, and sends the attendance result to Odoo.
 
-This project is a starting point for a Flutter application.
+No FastAPI middleware is required.
 
-A few resources to get you started if this is your first Flutter project:
+## Run
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```bash
+flutter pub get
+flutter run
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Configure
+
+Enter:
+
+- Odoo URL
+- Odoo database
+- scanner setup code generated in Odoo
+
+Use the Odoo server IP or domain from the phone. Do not use `localhost` unless Odoo is running on the phone itself.
+
+## Validate
+
+```bash
+flutter analyze
+flutter test
+```

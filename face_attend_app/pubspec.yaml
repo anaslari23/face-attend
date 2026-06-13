@@ -39,6 +39,7 @@ dependencies:
   http: ^1.2.2
   package_info_plus: ^8.1.2
   path_provider: ^2.1.5
+  lottie: ^3.1.2
 
 dev_dependencies:
   flutter_test:
@@ -64,6 +65,8 @@ flutter:
 
   assets:
     - assets/models/
+    - assets/cad7192a-1808-11ee-a276-67b999837403.json
+    - assets/047a4ca0-1161-11ee-b705-c7984e04e643.json
 
   # To add assets to your application, add an assets section, like this:
   # assets:

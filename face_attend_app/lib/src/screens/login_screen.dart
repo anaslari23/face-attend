@@ -231,14 +231,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                       suffixIcon: _fetchingDb
                                           ? const Padding(
                                               padding: EdgeInsets.all(12),
-                                              child: SizedBox(
-                                                width: 16,
-                                                height: 16,
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                    ),
-                                              ),
+                                              child: AppLoader(size: 16),
                                             )
                                           : IconButton(
                                               icon: const Icon(
@@ -281,14 +274,7 @@ class _LoginScreenState extends State<LoginScreen> with SingleTickerProviderStat
                                 ),
                                 alignment: Alignment.center,
                                 child: _loading
-                                    ? const SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.5,
-                                          color: Colors.white,
-                                        ),
-                                      )
+                                    ? const AppLoader(size: 22)
                                     : const Text(
                                         'Save Scanner',
                                         style: TextStyle(

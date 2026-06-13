@@ -288,12 +288,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           builder: (_) => AttendanceResultScreen(
             success: punch.accepted,
             title: punch.accepted
-                ? punch.punchType == 'check_out'
-                      ? 'Checked out'
-                      : 'Checked in'
+                ? 'Thank you! Attendance recorded'
                 : 'Face match failed',
             message: punch.accepted
-                ? '${punch.employee?.name ?? match.employeeName ?? 'Employee'} #${punch.employee?.id ?? match.employeeId} was ${punch.punchType == 'check_out' ? 'checked out' : 'checked in'}.'
+                ? '${punch.employee?.name ?? match.employeeName ?? 'Employee'} #${punch.employee?.id ?? match.employeeId} attendance was successfully stored.'
                 : _messageForRejectedMatch(
                     match,
                     inCooldown ? 'cooldown' : match.reason,
@@ -555,14 +553,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                               : _scan
                         : null,
                     child: _busy
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: FaceAttendColors.accent,
-                            ),
-                          )
+                        ? const AppLoader(size: 20)
                         : Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [

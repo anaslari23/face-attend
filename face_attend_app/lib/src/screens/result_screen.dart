@@ -66,7 +66,9 @@ class _AttendanceResultScreenState extends State<AttendanceResultScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final color = widget.success ? FaceAttendColors.success : FaceAttendColors.danger;
+    final color = widget.success
+        ? FaceAttendColors.success
+        : FaceAttendColors.danger;
     final icon = widget.success ? Icons.check : Icons.close;
     return Scaffold(
       appBar: AppBar(
@@ -127,7 +129,11 @@ class _AttendanceResultScreenState extends State<AttendanceResultScreen> {
                     const SizedBox(height: 24),
                     AnimatedEntrance(
                       delay: const Duration(milliseconds: 200),
-                      child: _ResultDetails(success: widget.success, time: widget.time, confidence: widget.confidence),
+                      child: _ResultDetails(
+                        success: widget.success,
+                        time: widget.time,
+                        confidence: widget.confidence,
+                      ),
                     ),
                     const SizedBox(height: 24),
                     AnimatedEntrance(
@@ -145,7 +151,9 @@ class _AttendanceResultScreenState extends State<AttendanceResultScreen> {
                             borderRadius: BorderRadius.circular(12),
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFF10B981).withValues(alpha: 0.25),
+                                color: const Color(
+                                  0xFF10B981,
+                                ).withValues(alpha: 0.25),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
                               ),
@@ -154,7 +162,11 @@ class _AttendanceResultScreenState extends State<AttendanceResultScreen> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(widget.primaryIcon, color: Colors.white, size: 20),
+                              Icon(
+                                widget.primaryIcon,
+                                color: Colors.white,
+                                size: 20,
+                              ),
                               const SizedBox(width: 8),
                               Text(
                                 widget.primaryLabel,
@@ -196,7 +208,9 @@ class _AttendanceResultScreenState extends State<AttendanceResultScreen> {
                                 Icon(
                                   Icons.refresh,
                                   size: 20,
-                                  color: FaceAttendColors.ink.withValues(alpha: 0.8),
+                                  color: FaceAttendColors.ink.withValues(
+                                    alpha: 0.8,
+                                  ),
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
@@ -204,7 +218,9 @@ class _AttendanceResultScreenState extends State<AttendanceResultScreen> {
                                   style: TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.w700,
-                                    color: FaceAttendColors.ink.withValues(alpha: 0.8),
+                                    color: FaceAttendColors.ink.withValues(
+                                      alpha: 0.8,
+                                    ),
                                     letterSpacing: 0.5,
                                   ),
                                 ),
@@ -240,7 +256,8 @@ class _ResultIcon extends StatefulWidget {
   State<_ResultIcon> createState() => _ResultIconState();
 }
 
-class _ResultIconState extends State<_ResultIcon> with TickerProviderStateMixin {
+class _ResultIconState extends State<_ResultIcon>
+    with TickerProviderStateMixin {
   late final AnimationController _popController;
   late final AnimationController _waveController;
   late final AnimationController _shakeController;
@@ -283,7 +300,7 @@ class _ResultIconState extends State<_ResultIcon> with TickerProviderStateMixin 
         width: 140,
         height: 140,
         child: Lottie.asset(
-          'assets/a992a4ba-1172-11ee-9469-dfdb01d8b8a0.json',
+          'assets/cad7192a-1808-11ee-a276-67b999837403.json',
           repeat: false,
         ),
       );
@@ -298,7 +315,10 @@ class _ResultIconState extends State<_ResultIcon> with TickerProviderStateMixin 
       builder: (context, child) {
         double dx = 0.0;
         if (_shakeController.value < 1.0) {
-          dx = math.sin(_shakeController.value * 4 * math.pi) * 8 * (1.0 - _shakeController.value);
+          dx =
+              math.sin(_shakeController.value * 4 * math.pi) *
+              8 *
+              (1.0 - _shakeController.value);
         }
 
         return Transform.translate(
@@ -363,34 +383,60 @@ class _ResultDetails extends StatelessWidget {
               label: 'LIVENESS ANALYSIS',
               value: success ? 'SECURE' : 'ALERT',
               icon: Icons.fingerprint,
-              color: success ? FaceAttendColors.success : FaceAttendColors.danger,
-              subtext: success ? 'Liveness verified' : 'Biometric spoof warning',
+              color: success
+                  ? FaceAttendColors.success
+                  : FaceAttendColors.danger,
+              subtext: success
+                  ? 'Liveness verified'
+                  : 'Biometric spoof warning',
             ),
-            const Divider(height: 20, thickness: 0.8, color: FaceAttendColors.border),
+            const Divider(
+              height: 20,
+              thickness: 0.8,
+              color: FaceAttendColors.border,
+            ),
             _TechReportRow(
               label: 'RECOGNITION ENGINE',
               value: success ? 'MATCH FOUND' : 'UNRESOLVED',
               icon: Icons.face_retouching_natural,
-              color: success ? FaceAttendColors.success : FaceAttendColors.danger,
-              subtext: success ? 'Identity match positive' : 'Low confidence match',
+              color: success
+                  ? FaceAttendColors.success
+                  : FaceAttendColors.danger,
+              subtext: success
+                  ? 'Identity match positive'
+                  : 'Low confidence match',
             ),
-            const Divider(height: 20, thickness: 0.8, color: FaceAttendColors.border),
+            const Divider(
+              height: 20,
+              thickness: 0.8,
+              color: FaceAttendColors.border,
+            ),
             _TechReportRow(
               label: 'MATCH CONFIDENCE',
-              value: confidence != null 
+              value: confidence != null
                   ? '${(confidence! * 100).clamp(0, 100).toStringAsFixed(1)}%'
                   : (success ? '96.4%' : '0.0%'),
               icon: Icons.bar_chart,
-              color: success ? FaceAttendColors.success : FaceAttendColors.danger,
+              color: success
+                  ? FaceAttendColors.success
+                  : FaceAttendColors.danger,
               subtext: 'Comparison score rating',
             ),
-            const Divider(height: 20, thickness: 0.8, color: FaceAttendColors.border),
+            const Divider(
+              height: 20,
+              thickness: 0.8,
+              color: FaceAttendColors.border,
+            ),
             _TechReportRow(
               label: 'DATABASE INTEGRATION',
               value: success ? 'SYNC COMPLETE' : 'SYNC ABORTED',
               icon: Icons.sync,
-              color: success ? FaceAttendColors.success : FaceAttendColors.danger,
-              subtext: success ? 'Punch-record written' : 'Server link inactive',
+              color: success
+                  ? FaceAttendColors.success
+                  : FaceAttendColors.danger,
+              subtext: success
+                  ? 'Punch-record written'
+                  : 'Server link inactive',
             ),
           ],
         ),
@@ -482,7 +528,8 @@ class _SweepingScanLine extends StatefulWidget {
   State<_SweepingScanLine> createState() => _SweepingScanLineState();
 }
 
-class _SweepingScanLineState extends State<_SweepingScanLine> with SingleTickerProviderStateMixin {
+class _SweepingScanLineState extends State<_SweepingScanLine>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
 
   @override
@@ -529,9 +576,15 @@ class _SweepingScanLineState extends State<_SweepingScanLine> with SingleTickerP
                                   begin: Alignment.topCenter,
                                   end: Alignment.bottomCenter,
                                   colors: [
-                                    FaceAttendColors.accent.withValues(alpha: 0.0),
-                                    FaceAttendColors.accent.withValues(alpha: 0.35),
-                                    FaceAttendColors.accent.withValues(alpha: 0.0),
+                                    FaceAttendColors.accent.withValues(
+                                      alpha: 0.0,
+                                    ),
+                                    FaceAttendColors.accent.withValues(
+                                      alpha: 0.35,
+                                    ),
+                                    FaceAttendColors.accent.withValues(
+                                      alpha: 0.0,
+                                    ),
                                   ],
                                 ),
                               ),
@@ -542,9 +595,7 @@ class _SweepingScanLineState extends State<_SweepingScanLine> with SingleTickerP
                             left: 0,
                             right: 0,
                             height: 2,
-                            child: Container(
-                              color: FaceAttendColors.accent,
-                            ),
+                            child: Container(color: FaceAttendColors.accent),
                           ),
                         ],
                       );

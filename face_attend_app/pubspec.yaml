@@ -65,7 +65,8 @@ flutter:
 
   assets:
     - assets/models/
-    - assets/a992a4ba-1172-11ee-9469-dfdb01d8b8a0.json
+    - assets/cad7192a-1808-11ee-a276-67b999837403.json
+    - assets/047a4ca0-1161-11ee-b705-c7984e04e643.json
 
   # To add assets to your application, add an assets section, like this:
   # assets:

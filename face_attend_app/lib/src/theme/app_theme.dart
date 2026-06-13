@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart';
 
 class FaceAttendColors {
   const FaceAttendColors._();
@@ -89,4 +90,21 @@ ThemeData faceAttendTheme() {
       color: FaceAttendColors.accent,
     ),
   );
+}
+
+class AppLoader extends StatelessWidget {
+  const AppLoader({this.size = 60, super.key});
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Lottie.asset(
+        'assets/047a4ca0-1161-11ee-b705-c7984e04e643.json',
+        repeat: true,
+      ),
+    );
+  }
 }

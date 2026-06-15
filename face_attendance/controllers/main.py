@@ -314,41 +314,10 @@ class FaceAttendanceController(http.Controller):
                 }
             )
 
-        open_attendance = request.env["hr.attendance"].sudo().search(
-            [("employee_id", "=", employee.id), ("check_out", "=", False)],
-            limit=1,
-            order="check_in desc",
-        )
-        if not open_attendance:
-            attendance = request.env["hr.attendance"].sudo().create(
-                {
-                    "employee_id": employee.id,
-                    "check_in": now,
-                    "recognition_confidence": match_score,
-                    "recognition_method": "face",
-                    "face_device_uid": device_id,
-                    "face_log_id": log.id,
-                }
-            )
-            punch_type = "check_in"
-        else:
-            attendance = open_attendance
-            attendance.write(
-                {
-                    "check_out": now,
-                    "recognition_confidence": match_score,
-                    "recognition_method": "face",
-                    "face_device_uid": device_id,
-                    "face_log_id": log.id,
-                }
-            )
-            punch_type = "check_out"
-
-        log.write({"attendance_id": attendance.id, "punch_type": punch_type})
         return self._json_response(
             {
                 "accepted": True,
-                "punch_type": punch_type,
+                "punch_type": log.punch_type,
                 "log_id": log.id,
                 "employee": self._employee_payload(employee),
                 "attendance": self._status_payload(employee),

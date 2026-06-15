@@ -301,13 +301,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         MaterialPageRoute(
           builder: (_) => AttendanceResultScreen(
             success: punch.accepted,
-            title: punch.accepted
-                ? punch.punchType == 'check_out'
-                      ? 'Checked out'
-                      : 'Checked in'
-                : 'Face match failed',
+            title: punch.accepted ? 'Thank you' : 'Face match failed',
             message: punch.accepted
-                ? '${punch.employee?.name ?? match.employeeName ?? 'Employee'} #${punch.employee?.id ?? match.employeeId} was ${punch.punchType == 'check_out' ? 'checked out' : 'checked in'}.'
+                ? 'Your attendance has been recorded.'
                 : _messageForRejectedMatch(
                     match,
                     inCooldown ? 'cooldown' : match.reason,

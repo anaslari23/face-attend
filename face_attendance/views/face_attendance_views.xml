@@ -92,9 +92,10 @@
         <field name="model">face.attendance.log</field>
         <field name="arch" type="xml">
             <list>
-                <field name="create_date" string="Scan Time"/>
+                <field name="create_date" string="Punch Time"/>
                 <field name="employee_odoo_id"/>
                 <field name="employee_name"/>
+                <field name="punch_type" string="Punch Type"/>
                 <field name="device_uid" string="Device ID"/>
             </list>
         </field>
@@ -124,9 +125,10 @@
             <form>
                 <sheet>
                     <group>
-                        <field name="create_date" string="Scan Time" readonly="1"/>
+                        <field name="create_date" string="Punch Time" readonly="1"/>
                         <field name="employee_odoo_id" readonly="1"/>
                         <field name="employee_name" readonly="1"/>
+                        <field name="punch_type" string="Punch Type" readonly="1"/>
                         <field name="device_uid" string="Device ID" readonly="1"/>
                     </group>
                 </sheet>
@@ -215,6 +217,7 @@
         <field name="name">Face Attendance Logs</field>
         <field name="res_model">face.attendance.log</field>
         <field name="view_mode">list,form,pivot,graph</field>
+        <field name="domain">[('accepted', '=', True)]</field>
         <field name="context">{'search_default_today': 1}</field>
     </record>
 

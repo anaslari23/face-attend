@@ -62,12 +62,18 @@ class OdooFaceAttendanceClient {
     Map<int, String> knownAvatarWriteDates = const {},
     String? modelVersion,
   }) async {
-    final payload = await _post('/face_attendance/scanner/employees', {
-      'model_version': modelVersion,
-      'known_avatar_write_dates': knownAvatarWriteDates.map(
-        (key, value) => MapEntry(key.toString(), value),
-      ),
-    });
+    Map<String, dynamic> payload;
+    try {
+      payload = await _post('/face_attendance/scanner/employees', {
+        'model_version': modelVersion,
+        'known_avatar_write_dates': knownAvatarWriteDates.map(
+          (key, value) => MapEntry(key.toString(), value),
+        ),
+      });
+    } on FaceAttendanceApiException catch (error) {
+      if (error.statusCode != 405) rethrow;
+      payload = await _get('/face_attendance/scanner/employees');
+    }
     return ScannerEmployeeSync.fromJson(payload);
   }
 

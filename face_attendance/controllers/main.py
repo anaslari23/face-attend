@@ -88,7 +88,7 @@ class FaceAttendanceController(http.Controller):
             }
         )
 
-    @http.route("/face_attendance/scanner/employees", type="http", auth="none", methods=["GET"], csrf=False)
+    @http.route("/face_attendance/scanner/employees", type="http", auth="none", methods=["GET", "POST"], csrf=False)
     def scanner_employees(self, **kwargs):
         device, error = self._require_device()
         if error:
@@ -96,28 +96,40 @@ class FaceAttendanceController(http.Controller):
         if device.device_type != "scanner":
             return self._json_response({"error": "scanner_device_required"}, status=403)
 
+        body = self._body() if request.httprequest.method == "POST" else {}
+        model_version = "arcface-w600k-r50-align-v3"
+        known_dates = body.get("known_avatar_write_dates") or {}
+        allow_incremental = body.get("model_version") == model_version and isinstance(known_dates, dict)
+
         employees = request.env["hr.employee"].sudo().search(
             [("active", "=", True), ("image_1920", "!=", False)],
             order="id",
         )
         payload = []
         for employee in employees:
+            avatar_write_date = fields.Datetime.to_string(employee.write_date)
+            known_write_date = str(known_dates.get(str(employee.id)) or known_dates.get(employee.id) or "")
+            include_avatar = not allow_incremental or known_write_date != avatar_write_date
             payload.append(
                 {
                     "id": employee.id,
                     "name": employee.name,
                     "department": employee.department_id.name if employee.department_id else None,
-                    "avatar": employee.image_1920.decode("utf-8")
-                    if isinstance(employee.image_1920, bytes)
-                    else employee.image_1920,
-                    "avatar_write_date": employee.write_date,
+                    "avatar": (
+                        employee.image_1920.decode("utf-8")
+                        if isinstance(employee.image_1920, bytes)
+                        else employee.image_1920
+                    )
+                    if include_avatar
+                    else "",
+                    "avatar_write_date": avatar_write_date,
                     "face_enabled": True,
                 }
             )
         return self._json_response(
             {
                 "device": self._device_payload(device),
-                "model_version": "arcface-w600k-r50-align-v3",
+                "model_version": model_version,
                 "threshold": float(self._config("face_attendance.match_threshold", "0.70")),
                 "employees": payload,
             }

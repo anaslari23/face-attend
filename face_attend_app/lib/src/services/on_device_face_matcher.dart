@@ -28,11 +28,14 @@ class OnDeviceFaceMatcher {
   LocalFaceIndex? _index;
 
   Future<FaceIndexSyncResult> sync() async {
-    final remote = await _client.scannerEmployees();
+    final stored = await LocalFaceIndexStore.read();
+    final remote = await _client.scannerEmployees(
+      modelVersion: modelVersion,
+      knownAvatarWriteDates: stored.avatarWriteDateMap,
+    );
     final effectiveModelVersion = remote.modelVersion == modelVersion
         ? remote.modelVersion
         : modelVersion;
-    final stored = await LocalFaceIndexStore.read();
     final records = <LocalFaceRecord>[];
     final failures = <String>[];
     debugPrint(
@@ -332,6 +335,10 @@ class LocalFaceIndex {
     }
     return null;
   }
+
+  Map<int, String> get avatarWriteDateMap => {
+    for (final record in records) record.employeeId: record.avatarWriteDate,
+  };
 
   LocalFaceIndex copyWith({List<LocalFaceRecord>? records}) {
     return LocalFaceIndex(

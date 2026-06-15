@@ -58,8 +58,16 @@ class OdooFaceAttendanceClient {
     );
   }
 
-  Future<ScannerEmployeeSync> scannerEmployees() async {
-    final payload = await _get('/face_attendance/scanner/employees');
+  Future<ScannerEmployeeSync> scannerEmployees({
+    Map<int, String> knownAvatarWriteDates = const {},
+    String? modelVersion,
+  }) async {
+    final payload = await _post('/face_attendance/scanner/employees', {
+      'model_version': modelVersion,
+      'known_avatar_write_dates': knownAvatarWriteDates.map(
+        (key, value) => MapEntry(key.toString(), value),
+      ),
+    });
     return ScannerEmployeeSync.fromJson(payload);
   }
 

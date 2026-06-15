@@ -9,6 +9,7 @@ import '../models/session.dart';
 import '../screens/result_screen.dart';
 import '../services/device_service.dart';
 import '../services/face_recognition_service.dart';
+import '../services/local_log_service.dart';
 import '../services/on_device_face_matcher.dart';
 import '../widgets/face_scan_view.dart';
 
@@ -270,27 +271,93 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       final accepted =
           match.matched && match.employeeId != null && liveAccepted;
       final inCooldown = accepted && _isEmployeeInCooldown(match.employeeId!);
-      final punch = await _client.punch(
-        accepted: accepted && !inCooldown,
-        matchedEmployeeId: match.employeeId,
-        matchScore: match.confidence,
-        threshold: match.threshold,
-        deviceId: deviceId,
-        appVersion: appVersion,
-        failureReason: accepted
+
+      final Map<String, dynamic> payload = {
+        'accepted': accepted && !inCooldown,
+        'matched_employee_id': match.employeeId,
+        'match_score': match.confidence,
+        'threshold': match.threshold,
+        'device_id': deviceId,
+        'app_version': appVersion,
+        'failure_reason': accepted
             ? inCooldown
-                  ? 'cooldown'
-                  : null
+                ? 'cooldown'
+                : null
             : liveAccepted
             ? match.reason ?? 'below_threshold'
             : 'liveness_failed',
-        secondBestConfidence: match.secondBestConfidence,
-        embeddingSource: match.embeddingSource,
-        needsReview: match.needsReview,
-        livenessPassed: match.livenessPassed,
-        livenessScore: match.livenessScore,
-        spoofScore: match.livenessPassed ? 0 : 1,
+        'second_best_confidence': match.secondBestConfidence,
+        'embedding_source': match.embeddingSource,
+        'needs_review': match.needsReview,
+        'liveness_passed': match.livenessPassed,
+        'liveness_score': match.livenessScore,
+        'spoof_score': match.livenessPassed ? 0.0 : 1.0,
+      };
+
+      final now = DateTime.now();
+      final employeeName = match.employeeName ?? 'Unknown Employee';
+      final logId = 'log_${now.millisecondsSinceEpoch}_${match.employeeId ?? 0}';
+
+      // 1. Add log locally as unsynced
+      await LocalLogService.instance.addLog(
+        id: logId,
+        timestamp: now,
+        payload: payload,
+        employeeName: employeeName,
+        isSynced: false,
       );
+
+      PunchResult punch;
+      try {
+        punch = await _client.punch(
+          accepted: payload['accepted'] as bool,
+          matchedEmployeeId: payload['matched_employee_id'] as int?,
+          matchScore: (payload['match_score'] as num).toDouble(),
+          threshold: (payload['threshold'] as num).toDouble(),
+          deviceId: payload['device_id'] as String,
+          appVersion: payload['app_version'] as String,
+          failureReason: payload['failure_reason'] as String?,
+          secondBestConfidence: payload['second_best_confidence'] != null 
+              ? (payload['second_best_confidence'] as num).toDouble() 
+              : null,
+          embeddingSource: payload['embedding_source'] as String?,
+          needsReview: payload['needs_review'] as bool,
+          livenessPassed: payload['liveness_passed'] as bool,
+          livenessScore: payload['liveness_score'] != null 
+              ? (payload['liveness_score'] as num).toDouble() 
+              : null,
+          spoofScore: (payload['spoof_score'] as num).toDouble(),
+        );
+        // 2. Mark local log as synced
+        await LocalLogService.instance.updateLogSyncStatus(logId, isSynced: true);
+      } catch (error) {
+        // If API fails (e.g. network/offline), log the error but treat the match as temporarily valid if accepted locally
+        await LocalLogService.instance.updateLogSyncStatus(
+          logId,
+          isSynced: false,
+          syncError: error.toString(),
+        );
+
+        if (accepted && !inCooldown) {
+          punch = PunchResult(
+            accepted: true,
+            punchType: 'offline_log',
+            employee: EmployeeProfile(
+              id: match.employeeId!,
+              name: employeeName,
+              faceRegistered: true,
+            ),
+          );
+        } else {
+          punch = PunchResult(
+            accepted: false,
+            employee: match.employeeId != null
+                ? EmployeeProfile(id: match.employeeId!, name: employeeName, faceRegistered: true)
+                : null,
+          );
+        }
+      }
+
       if (accepted && !inCooldown) {
         _lastPunchByEmployee[match.employeeId!] = DateTime.now();
       }
@@ -340,6 +407,30 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     final deviceId = widget.session.deviceId.isNotEmpty
         ? widget.session.deviceId
         : device.id;
+
+    final Map<String, dynamic> payload = {
+      'accepted': false,
+      'matched_employee_id': null,
+      'match_score': 0.0,
+      'threshold': 0.70,
+      'device_id': deviceId,
+      'app_version': appVersion,
+      'failure_reason': error,
+      'liveness_passed': false,
+      'spoof_score': 1.0,
+    };
+
+    final now = DateTime.now();
+    final logId = 'log_${now.millisecondsSinceEpoch}_err';
+
+    await LocalLogService.instance.addLog(
+      id: logId,
+      timestamp: now,
+      payload: payload,
+      employeeName: 'System Error',
+      isSynced: false,
+    );
+
     try {
       await _client.punch(
         accepted: false,
@@ -351,8 +442,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         livenessPassed: false,
         spoofScore: 1.0,
       );
+      await LocalLogService.instance.updateLogSyncStatus(logId, isSynced: true);
     } catch (_) {
-      // Preserve the original scanner error for the operator.
+      // Keep as unsynced offline log
     }
   }
 

@@ -6,6 +6,8 @@ import 'src/models/session.dart';
 import 'src/screens/attendance_screen.dart';
 import 'src/screens/login_screen.dart';
 import 'src/screens/settings_screen.dart';
+import 'src/screens/local_log_screen.dart';
+import 'src/services/local_log_service.dart';
 import 'src/services/secure_session_store.dart';
 import 'src/theme/app_theme.dart';
 
@@ -124,6 +126,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       vsync: this,
       duration: const Duration(seconds: 40),
     )..repeat();
+
+    // Auto-sync offline logs in background on launch
+    LocalLogService.instance.syncPendingLogs(_client);
   }
 
   @override
@@ -133,6 +138,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   void _refresh() {
+    LocalLogService.instance.syncPendingLogs(_client).then((syncedCount) {
+      if (syncedCount > 0 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Synced $syncedCount offline attendance logs successfully'),
+            backgroundColor: FaceAttendColors.success,
+          ),
+        );
+      }
+    });
     setState(() {
       _statusFuture = _client.status();
     });
@@ -299,6 +314,27 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       subtitle: 'Identify employee and check in or out',
                       icon: Icons.face_retouching_natural,
                       isPrimary: true,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                AnimatedEntrance(
+                  delay: const Duration(milliseconds: 350),
+                  child: ScaleOnPress(
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              LocalLogScreen(session: widget.session),
+                        ),
+                      );
+                      _refresh();
+                    },
+                    child: const _QuickActionCard(
+                      title: 'Device Activity Logs',
+                      subtitle: 'View recent scans and sync queue',
+                      icon: Icons.history,
+                      isPrimary: false,
                     ),
                   ),
                 ),

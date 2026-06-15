@@ -85,8 +85,9 @@ class OdooFaceAttendanceClient {
     bool livenessPassed = false,
     double? livenessScore,
     double? spoofScore,
+    String? timestamp,
   }) async {
-    final payload = await _post('/face_attendance/punch', {
+    final body = <String, dynamic>{
       'accepted': accepted,
       'matched_employee_id': matchedEmployeeId,
       'match_score': matchScore,
@@ -101,7 +102,11 @@ class OdooFaceAttendanceClient {
       'liveness_passed': livenessPassed,
       'liveness_score': livenessScore,
       'spoof_score': spoofScore,
-    });
+    };
+    if (timestamp != null) {
+      body['timestamp'] = timestamp;
+    }
+    final payload = await _post('/face_attendance/punch', body);
     return PunchResult.fromJson(payload);
   }
 

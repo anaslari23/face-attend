@@ -238,6 +238,19 @@ class FaceAttendanceController(http.Controller):
         except (TypeError, ValueError):
             spoof_score = 0.0
 
+        now = fields.Datetime.now()
+        timestamp_val = body.get("timestamp")
+        if timestamp_val:
+            try:
+                if isinstance(timestamp_val, str):
+                    # Replace ISO 'T' and 'Z' to make it compatible with Odoo's datetime parsing
+                    clean_ts = timestamp_val.replace('Z', '').replace('T', ' ')
+                    now = fields.Datetime.to_datetime(clean_ts)
+                else:
+                    now = fields.Datetime.to_datetime(timestamp_val)
+            except Exception:
+                pass
+
         employee = device.employee_id
         if device.device_type == "scanner":
             employee = None
@@ -289,10 +302,9 @@ class FaceAttendanceController(http.Controller):
                 }
             )
 
-        now = fields.Datetime.now()
         start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
         end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=999999)
-        
+
         daily_attendance = request.env["hr.attendance"].sudo().search(
             [("employee_id", "=", employee.id), ("check_in", ">=", start_of_day), ("check_in", "<=", end_of_day)],
             limit=1,
@@ -312,8 +324,17 @@ class FaceAttendanceController(http.Controller):
             punch_type = "check_in"
         else:
             attendance = daily_attendance
+            attendance.write(
+                {
+                    "check_out": now,
+                    "recognition_confidence": match_score,
+                    "recognition_method": "face",
+                    "face_device_uid": device_id,
+                    "face_log_id": log.id,
+                }
+            )
             punch_type = "check_out"
-            
+
         log.write({"attendance_id": attendance.id, "punch_type": punch_type})
         return self._json_response(
             {

@@ -289,25 +289,16 @@ class FaceAttendanceController(http.Controller):
                 }
             )
 
-        open_attendance = request.env["hr.attendance"].sudo().search(
-            [("employee_id", "=", employee.id), ("check_out", "=", False)],
-            limit=1,
-            order="check_in desc",
-        )
         now = fields.Datetime.now()
-        if open_attendance:
-            open_attendance.write(
-                {
-                    "check_out": now,
-                    "recognition_confidence": match_score,
-                    "recognition_method": "face",
-                    "face_device_uid": device_id,
-                    "face_log_id": log.id,
-                }
-            )
-            attendance = open_attendance
-            punch_type = "check_out"
-        else:
+        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_day = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        daily_attendance = request.env["hr.attendance"].sudo().search(
+            [("employee_id", "=", employee.id), ("check_in", ">=", start_of_day), ("check_in", "<=", end_of_day)],
+            limit=1,
+            order="check_in asc",
+        )
+        if not daily_attendance:
             attendance = request.env["hr.attendance"].sudo().create(
                 {
                     "employee_id": employee.id,
@@ -319,6 +310,10 @@ class FaceAttendanceController(http.Controller):
                 }
             )
             punch_type = "check_in"
+        else:
+            attendance = daily_attendance
+            punch_type = "check_out"
+            
         log.write({"attendance_id": attendance.id, "punch_type": punch_type})
         return self._json_response(
             {

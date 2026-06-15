@@ -48,7 +48,7 @@ class FaceAttendanceConfig(models.Model):
     liveness_required = fields.Boolean(default=True)
     anti_spoofing_required = fields.Boolean(default=True)
     active = fields.Boolean(default=True)
-    notes = fields.Text()
+    device_ids = fields.One2many("face.attendance.device", "config_id", string="Registered Devices")
 
     def action_open_logs(self):
         self.ensure_one()
@@ -85,6 +85,7 @@ class FaceAttendanceDevice(models.Model):
     token_expires_at = fields.Datetime(required=True, default=_default_token_expires_at)
     last_seen_at = fields.Datetime()
     active = fields.Boolean(default=True)
+    config_id = fields.Many2one("face.attendance.config", string="Configuration", default=lambda self: self.env["face.attendance.config"].search([], limit=1))
 
     _sql_constraints = [
         ("employee_device_unique", "unique(employee_id, device_uid)", "This device is already registered for the employee."),
@@ -114,7 +115,7 @@ class FaceAttendanceLog(models.Model):
     attendance_id = fields.Many2one("hr.attendance", index=True, ondelete="set null")
     device_uid = fields.Char(index=True)
     app_version = fields.Char()
-    punch_type = fields.Selection([("check_in", "Check In"), ("check_out", "Check Out")])
+    punch_type = fields.Selection([("check_in", "In"), ("check_out", "Out")])
     match_score = fields.Float(required=True)
     threshold = fields.Float(required=True)
     second_best_confidence = fields.Float()
@@ -142,3 +143,29 @@ class FaceAttendanceLog(models.Model):
     def _compute_result_label(self):
         for record in self:
             record.result_label = "Accepted" if record.accepted else record.failure_reason or "Rejected"
+
+    @api.model
+    def _cron_auto_checkout(self):
+        today = fields.Datetime.now()
+        start_of_day = today.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_day = today.replace(hour=23, minute=59, second=59, microsecond=999999)
+        
+        domain = [
+            ("check_in", ">=", start_of_day),
+            ("check_in", "<=", end_of_day),
+            ("check_out", "=", False),
+        ]
+        open_attendances = self.env["hr.attendance"].search(domain)
+        
+        for attendance in open_attendances:
+            log_domain = [
+                ("employee_id", "=", attendance.employee_id.id),
+                ("accepted", "=", True),
+                ("create_date", ">=", start_of_day),
+                ("create_date", "<=", end_of_day),
+            ]
+            last_log = self.search(log_domain, order="create_date desc", limit=1)
+            
+            if last_log:
+                attendance.write({"check_out": last_log.create_date})
+

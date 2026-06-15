@@ -193,9 +193,43 @@
                             <field name="anti_spoofing_required"/>
                         </group>
                     </group>
-                    <group string="Notes">
-                        <field name="notes" nolabel="1"/>
-                    </group>
+                    <notebook>
+                        <page string="Registered Devices">
+                            <field name="device_ids">
+                                <list decoration-muted="not active">
+                                    <field name="name"/>
+                                    <field name="device_type"/>
+                                    <field name="employee_id"/>
+                                    <field name="device_uid"/>
+                                    <field name="active"/>
+                                    <field name="last_seen_at"/>
+                                    <field name="token_expires_at"/>
+                                    <field name="setup_code" readonly="1" optional="hide"/>
+                                    <field name="token" column_invisible="True"/>
+                                </list>
+                                <form>
+                                    <header>
+                                        <button name="action_generate_token" type="object" string="Generate New Token" class="btn-secondary"/>
+                                    </header>
+                                    <group>
+                                        <group>
+                                            <field name="name"/>
+                                            <field name="device_type"/>
+                                            <field name="employee_id"/>
+                                            <field name="device_uid"/>
+                                            <field name="active"/>
+                                        </group>
+                                        <group>
+                                            <field name="last_seen_at" readonly="1"/>
+                                            <field name="token_expires_at"/>
+                                            <field name="setup_code" readonly="1"/>
+                                            <field name="token" invisible="1"/>
+                                        </group>
+                                    </group>
+                                </form>
+                            </field>
+                        </page>
+                    </notebook>
                 </sheet>
             </form>
         </field>

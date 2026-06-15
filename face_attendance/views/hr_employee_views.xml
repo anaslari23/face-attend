@@ -31,4 +31,16 @@
             </xpath>
         </field>
     </record>
+    <record id="action_sync_face_to_middleware_multi" model="ir.actions.server">
+        <field name="name">Sync Face to Middleware</field>
+        <field name="model_id" ref="hr.model_hr_employee"/>
+        <field name="binding_model_id" ref="hr.model_hr_employee"/>
+        <field name="binding_view_types">list,form</field>
+        <field name="state">code</field>
+        <field name="code">
+for record in records:
+    if record.image_1920:
+        record.action_sync_face_to_middleware()
+        </field>
+    </record>
 </odoo>

@@ -1,7 +1,10 @@
 <odoo>
-    <menuitem id="face_attendance_root_menu" name="Face Attendance" sequence="90" groups="face_attendance.group_face_attendance_user"/>
-    <menuitem id="face_attendance_log_menu" name="Audit Logs" parent="face_attendance_root_menu" action="face_attendance_log_action" sequence="10" groups="face_attendance.group_face_attendance_user"/>
+    <menuitem id="face_attendance_root_menu" name="Face Attendance" sequence="90" active="False" groups="face_attendance.group_face_attendance_user"/>
+    <menuitem id="face_attendance_log_menu" name="Audit Logs" parent="face_attendance_root_menu" action="face_attendance_log_action" sequence="10" active="False" groups="face_attendance.group_face_attendance_user"/>
     <menuitem id="face_attendance_template_menu" name="Face Templates" parent="face_attendance_root_menu" action="face_attendance_template_action" sequence="20" active="False" groups="face_attendance.group_face_attendance_manager"/>
-    <menuitem id="face_attendance_device_menu" name="Registered Devices" parent="face_attendance_root_menu" action="face_attendance_device_action" sequence="30" groups="face_attendance.group_face_attendance_manager"/>
-    <menuitem id="face_attendance_config_menu" name="Configuration" parent="face_attendance_root_menu" action="face_attendance_config_action" sequence="40" groups="face_attendance.group_face_attendance_manager"/>
+    <menuitem id="face_attendance_device_menu" name="Registered Devices" parent="face_attendance_root_menu" action="face_attendance_device_action" sequence="30" active="False" groups="face_attendance.group_face_attendance_manager"/>
+    <menuitem id="face_attendance_config_menu" name="Face Attendance Configuration" parent="hr_attendance.menu_hr_attendance_configuration" action="face_attendance_config_action" sequence="40" groups="face_attendance.group_face_attendance_manager"/>
+
+    <!-- Add Face Attendance Logs under HR Attendance Reporting menu -->
+    <menuitem id="hr_attendance_face_attendance_log_report_menu" name="Face Attendance Log" parent="hr_attendance.menu_hr_attendance_reporting" action="face_attendance_log_action" sequence="50" groups="face_attendance.group_face_attendance_user"/>
 </odoo>

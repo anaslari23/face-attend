@@ -144,6 +144,49 @@ class FaceAttendanceLog(models.Model):
         for record in self:
             record.result_label = "Accepted" if record.accepted else record.failure_reason or "Rejected"
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        logs = super().create(vals_list)
+        for log in logs:
+            if log.employee_id and log.accepted:
+                start_of_day = log.create_date.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_of_day = log.create_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+                
+                last_log = self.env["face.attendance.log"].search([
+                    ("employee_id", "=", log.employee_id.id),
+                    ("create_date", ">=", start_of_day),
+                    ("create_date", "<=", end_of_day),
+                    ("id", "!=", log.id),
+                    ("punch_type", "!=", False)
+                ], limit=1, order="create_date desc")
+                
+                if not last_log:
+                    punch_type = "check_in"
+                elif last_log.punch_type == "check_in":
+                    punch_type = "check_out"
+                else:
+                    punch_type = "check_in"
+
+                daily_attendance = self.env["hr.attendance"].search([
+                    ("employee_id", "=", log.employee_id.id),
+                    ("check_in", ">=", start_of_day),
+                    ("check_in", "<=", end_of_day)
+                ], limit=1, order="check_in asc")
+                
+                if not daily_attendance:
+                    daily_attendance = self.env["hr.attendance"].create({
+                        "employee_id": log.employee_id.id,
+                        "check_in": log.create_date,
+                        "recognition_confidence": log.match_score,
+                        "recognition_method": "face",
+                        "face_device_uid": log.device_uid,
+                        "face_log_id": log.id,
+                    })
+                
+                log.attendance_id = daily_attendance.id if daily_attendance else False
+                log.punch_type = punch_type
+        return logs
+
     @api.model
     def _cron_auto_checkout(self):
         today = fields.Datetime.now()

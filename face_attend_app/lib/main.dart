@@ -142,7 +142,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       if (syncedCount > 0 && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Synced $syncedCount offline attendance logs successfully'),
+            content: Text(
+              'Synced $syncedCount offline attendance logs successfully',
+            ),
             backgroundColor: FaceAttendColors.success,
           ),
         );
@@ -167,7 +169,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             const SizedBox(width: 8),
             const Text(
-              'FaceAttend',
+              'PISmartPunch',
               style: TextStyle(
                 fontWeight: FontWeight.w800,
                 letterSpacing: -0.5,

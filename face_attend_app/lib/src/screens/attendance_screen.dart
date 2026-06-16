@@ -77,6 +77,13 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Future<void> _init() async {
     try {
+      final device = await _deviceService.identity();
+      final deviceId = widget.session.deviceId.isNotEmpty
+          ? widget.session.deviceId
+          : device.id;
+      debugPrint('\n=========================================');
+      debugPrint('DEVICE_UID: $deviceId');
+      debugPrint('=========================================\n');
       final cameras = await availableCameras();
       final front = cameras.firstWhere(
         (camera) => camera.lensDirection == CameraLensDirection.front,
@@ -385,8 +392,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         ),
       );
       if (!mounted) return;
-      _pauseAfterScan(
-        punch.accepted
+      await _resetDetectionState(
+        message: punch.accepted
             ? 'Scan complete'
             : _messageForRejectedMatch(
                 match,

@@ -40,13 +40,12 @@ class _AttendanceResultScreenState extends State<AttendanceResultScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.success) {
-      _autoPopTimer = Timer(const Duration(seconds: 5), () {
-        if (mounted) {
-          _navigateBack();
-        }
-      });
-    }
+    // Auto-pop after 3 seconds for success (thank you screen), 4 seconds for failure
+    _autoPopTimer = Timer(Duration(seconds: widget.success ? 3 : 4), () {
+      if (mounted) {
+        _navigateBack();
+      }
+    });
   }
 
   @override

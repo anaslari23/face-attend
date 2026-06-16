@@ -28,16 +28,25 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
             when (call.method) {
                 "embed" -> {
-                    try {
-                        val imageBytes = call.argument<ByteArray>("imageBytes")
-                            ?: throw IllegalArgumentException("imageBytes is required")
-                        val landmarks = call.argument<Map<String, Any>>("landmarks")
-                            ?: throw IllegalArgumentException("landmarks are required")
-                        val runner = arcFace ?: ArcFaceRunner(assets, cacheDir).also { arcFace = it }
-                        result.success(runner.embed(imageBytes, landmarks))
-                    } catch (error: Throwable) {
-                        result.error("arcface_failed", error.message, null)
-                    }
+                    Thread {
+                        try {
+                            val imageBytes = call.argument<ByteArray>("imageBytes")
+                                ?: throw IllegalArgumentException("imageBytes is required")
+                            val landmarks = call.argument<Map<String, Any>>("landmarks")
+                                ?: throw IllegalArgumentException("landmarks are required")
+                            val runner = synchronized(this) {
+                                arcFace ?: ArcFaceRunner(assets, cacheDir).also { arcFace = it }
+                            }
+                            val embedding = runner.embed(imageBytes, landmarks)
+                            runOnUiThread {
+                                result.success(embedding)
+                            }
+                        } catch (error: Throwable) {
+                            runOnUiThread {
+                                result.error("arcface_failed", error.message, null)
+                            }
+                        }
+                    }.start()
                 }
                 else -> result.notImplemented()
             }
@@ -71,11 +80,49 @@ private class ArcFaceRunner(private val assets: AssetManager, private val cacheD
 
     private fun modelFile(): File {
         val file = File(contextCacheDir(), "w600k_r50.onnx")
-        if (file.exists() && file.length() > 0) return file
-        assets.open("flutter_assets/assets/models/w600k_r50.onnx").use { input ->
-            FileOutputStream(file).use { output -> input.copyTo(output) }
+        
+        // Try to verify expected length of the asset
+        var expectedLength = -1L
+        try {
+            assets.openFd("flutter_assets/assets/models/w600k_r50.onnx").use { fd ->
+                expectedLength = fd.length
+            }
+        } catch (_: Exception) {}
+
+        if (file.exists()) {
+            if (expectedLength > 0 && file.length() == expectedLength) {
+                return file
+            }
+            if (expectedLength <= 0 && file.length() > 100_000_000) {
+                return file
+            }
+            file.delete()
         }
-        return file
+
+        val tempFile = File(contextCacheDir(), "w600k_r50.onnx.tmp")
+        if (tempFile.exists()) {
+            tempFile.delete()
+        }
+
+        try {
+            assets.open("flutter_assets/assets/models/w600k_r50.onnx").use { input ->
+                FileOutputStream(tempFile).use { output ->
+                    input.copyTo(output)
+                }
+            }
+            if (tempFile.renameTo(file)) {
+                return file
+            } else {
+                tempFile.copyTo(file, overwrite = true)
+                tempFile.delete()
+                return file
+            }
+        } catch (e: Exception) {
+            if (tempFile.exists()) {
+                tempFile.delete()
+            }
+            throw e
+        }
     }
 
     private fun contextCacheDir(): File {

@@ -6,6 +6,7 @@ import 'package:face_attend_app/main.dart';
 import '../api/odoo_face_attendance_client.dart';
 import '../models/session.dart';
 import '../services/local_log_service.dart';
+import '../services/log_export_service.dart';
 import '../theme/app_theme.dart';
 
 class LocalLogScreen extends StatefulWidget {
@@ -37,9 +38,14 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
   Future<void> _loadLogs() async {
     setState(() => _loading = true);
     final logs = await LocalLogService.instance.getLogs();
+    // Only show logs where attendance matched/accepted
+    final matchedLogs = logs.where((log) {
+      final payload = log.payload;
+      return payload['accepted'] as bool? ?? false;
+    }).toList();
     if (mounted) {
       setState(() {
-        _logs = logs;
+        _logs = matchedLogs;
         _loading = false;
       });
     }
@@ -139,6 +145,51 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
             tooltip: 'Clear History',
             onPressed: _logs.isEmpty ? null : _clearLogs,
           ),
+          if (_logs.isNotEmpty)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.download_outlined),
+              tooltip: 'Export Logs',
+              onSelected: (value) async {
+                try {
+                  if (value == 'pdf') {
+                    await LogExportService.exportToPdf(_logs);
+                  } else if (value == 'excel') {
+                    await LogExportService.exportToExcel(_logs);
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to export logs: $e'),
+                        backgroundColor: FaceAttendColors.danger,
+                      ),
+                    );
+                  }
+                }
+              },
+              itemBuilder: (context) => [
+                const PopupMenuItem(
+                  value: 'pdf',
+                  child: Row(
+                    children: [
+                      Icon(Icons.picture_as_pdf_outlined, color: FaceAttendColors.danger),
+                      SizedBox(width: 8),
+                      Text('Export PDF'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'excel',
+                  child: Row(
+                    children: [
+                      Icon(Icons.table_view_outlined, color: FaceAttendColors.success),
+                      SizedBox(width: 8),
+                      Text('Export Excel'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           if (_syncing)
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),

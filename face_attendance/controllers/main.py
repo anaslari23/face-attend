@@ -3,7 +3,9 @@ import logging
 import secrets
 from datetime import timedelta
 
+# pyrefly: ignore [missing-import]
 from odoo import fields, http
+# pyrefly: ignore [missing-import]
 from odoo.http import request
 
 _logger = logging.getLogger(__name__)
@@ -215,114 +217,119 @@ class FaceAttendanceController(http.Controller):
 
     @http.route("/face_attendance/punch", type="http", auth="none", methods=["POST"], csrf=False)
     def punch(self, **kwargs):
-        device, error = self._require_device()
-        if error:
-            return error
-        body = self._body()
-        accepted = bool(body.get("accepted"))
-        matched_employee_id = body.get("matched_employee_id")
-        match_score = float(body.get("match_score") or 0.0)
-        threshold = float(body.get("threshold") or self._config("face_attendance.match_threshold", "0.70"))
-        device_id = body.get("device_id") or device.device_uid
-        app_version = body.get("app_version")
-        failure_reason = body.get("failure_reason")
-        second_best_confidence = body.get("second_best_confidence")
-        embedding_source = body.get("embedding_source")
-        review_embedding_id = body.get("review_embedding_id")
-        needs_review = bool(body.get("needs_review"))
-        liveness_passed = bool(body.get("liveness_passed"))
-        liveness_score = body.get("liveness_score")
-        spoof_score = body.get("spoof_score")
         try:
-            second_best_confidence = float(second_best_confidence) if second_best_confidence is not None else False
-        except (TypeError, ValueError):
-            second_best_confidence = False
-        try:
-            review_embedding_id = int(review_embedding_id) if review_embedding_id else False
-        except (TypeError, ValueError):
-            review_embedding_id = False
-        try:
-            liveness_score = float(liveness_score) if liveness_score is not None else 0.0
-        except (TypeError, ValueError):
-            liveness_score = 0.0
-        try:
-            spoof_score = float(spoof_score) if spoof_score is not None else 0.0
-        except (TypeError, ValueError):
-            spoof_score = 0.0
-
-        now = fields.Datetime.now()
-        timestamp_val = body.get("timestamp")
-        if timestamp_val:
+            device, error = self._require_device()
+            if error:
+                return error
+            body = self._body()
+            accepted = bool(body.get("accepted"))
+            matched_employee_id = body.get("matched_employee_id")
+            match_score = float(body.get("match_score") or 0.0)
+            threshold = float(body.get("threshold") or self._config("face_attendance.match_threshold", "0.70"))
+            device_id = body.get("device_id") or device.device_uid
+            app_version = body.get("app_version")
+            failure_reason = body.get("failure_reason")
+            second_best_confidence = body.get("second_best_confidence")
+            embedding_source = body.get("embedding_source")
+            review_embedding_id = body.get("review_embedding_id")
+            needs_review = bool(body.get("needs_review"))
+            liveness_passed = bool(body.get("liveness_passed"))
+            liveness_score = body.get("liveness_score")
+            spoof_score = body.get("spoof_score")
             try:
-                if isinstance(timestamp_val, str):
-                    # Replace ISO 'T' and 'Z' to make it compatible with Odoo's datetime parsing
-                    clean_ts = timestamp_val.replace('Z', '').replace('T', ' ')
-                    now = fields.Datetime.to_datetime(clean_ts)
-                else:
-                    now = fields.Datetime.to_datetime(timestamp_val)
-            except Exception:
-                pass
+                second_best_confidence = float(second_best_confidence) if second_best_confidence is not None else False
+            except (TypeError, ValueError):
+                second_best_confidence = False
+            try:
+                review_embedding_id = int(review_embedding_id) if review_embedding_id else False
+            except (TypeError, ValueError):
+                review_embedding_id = False
+            try:
+                liveness_score = float(liveness_score) if liveness_score is not None else 0.0
+            except (TypeError, ValueError):
+                liveness_score = 0.0
+            try:
+                spoof_score = float(spoof_score) if spoof_score is not None else 0.0
+            except (TypeError, ValueError):
+                spoof_score = 0.0
 
-        employee = device.employee_id
-        if device.device_type == "scanner":
-            employee = None
-            if matched_employee_id:
+            now = fields.Datetime.now()
+            timestamp_val = body.get("timestamp")
+            if timestamp_val:
                 try:
-                    matched_employee_id = int(matched_employee_id)
-                except (TypeError, ValueError):
-                    return self._json_response({"error": "invalid_matched_employee_id"}, status=400)
-                employee = request.env["hr.employee"].sudo().browse(matched_employee_id)
-                if not employee.exists():
-                    return self._json_response({"error": "matched_employee_not_found"}, status=404)
-        if accepted and not employee:
-            return self._json_response({"error": "matched_employee_id_required"}, status=400)
+                    if isinstance(timestamp_val, str):
+                        # Replace ISO 'T' and 'Z' to make it compatible with Odoo's datetime parsing
+                        clean_ts = timestamp_val.replace('Z', '').replace('T', ' ')
+                        now = fields.Datetime.to_datetime(clean_ts)
+                    else:
+                        now = fields.Datetime.to_datetime(timestamp_val)
+                except Exception:
+                    pass
 
-        if accepted and not liveness_passed and not failure_reason:
-            failure_reason = "liveness_failed"
+            employee = device.employee_id
+            if device.device_type == "scanner":
+                employee = None
+                if matched_employee_id:
+                    try:
+                        matched_employee_id = int(matched_employee_id)
+                    except (TypeError, ValueError):
+                        return self._json_response({"error": "invalid_matched_employee_id"}, status=400)
+                    employee = request.env["hr.employee"].sudo().browse(matched_employee_id)
+                    if not employee.exists():
+                        return self._json_response({"error": "matched_employee_not_found"}, status=404)
+            if accepted and not employee:
+                return self._json_response({"error": "matched_employee_id_required"}, status=400)
 
-        log_accepted = bool(employee) and accepted and match_score >= threshold and liveness_passed
-        if accepted and employee and match_score < threshold and not failure_reason:
-            failure_reason = "below_threshold"
+            if accepted and not liveness_passed and not failure_reason:
+                failure_reason = "liveness_failed"
 
-        log = request.env["face.attendance.log"].sudo().create(
-            {
-                "employee_id": employee.id if employee else False,
-                "device_uid": device_id,
-                "app_version": app_version,
-                "match_score": match_score,
-                "threshold": threshold,
-                "second_best_confidence": second_best_confidence,
-                "embedding_source": embedding_source,
-                "review_embedding_id": review_embedding_id,
-                "needs_review": needs_review,
-                "liveness_passed": liveness_passed,
-                "liveness_score": liveness_score,
-                "spoof_score": spoof_score,
-                "accepted": log_accepted,
-                "failure_reason": failure_reason,
-                "raw_payload": json.dumps(body),
-            }
-        )
+            log_accepted = bool(employee) and accepted and match_score >= threshold and liveness_passed
+            if accepted and employee and match_score < threshold and not failure_reason:
+                failure_reason = "below_threshold"
 
-        if not log.accepted:
-            return self._json_response(
+            log = request.env["face.attendance.log"].sudo().create(
                 {
-                    "accepted": False,
-                    "log_id": log.id,
-                    "employee": self._employee_payload(employee) if employee else None,
-                    "attendance": self._status_payload(employee) if employee else self._empty_status_payload(),
+                    "employee_id": employee.id if employee else False,
+                    "device_uid": device_id,
+                    "app_version": app_version,
+                    "match_score": match_score,
+                    "threshold": threshold,
+                    "second_best_confidence": second_best_confidence,
+                    "embedding_source": embedding_source,
+                    "review_embedding_id": review_embedding_id,
+                    "needs_review": needs_review,
+                    "liveness_passed": liveness_passed,
+                    "liveness_score": liveness_score,
+                    "spoof_score": spoof_score,
+                    "accepted": log_accepted,
+                    "failure_reason": failure_reason,
+                    "raw_payload": json.dumps(body),
                 }
             )
 
-        return self._json_response(
-            {
-                "accepted": True,
-                "punch_type": log.punch_type,
-                "log_id": log.id,
-                "employee": self._employee_payload(employee),
-                "attendance": self._status_payload(employee),
-            }
-        )
+            if not log.accepted:
+                return self._json_response(
+                    {
+                        "accepted": False,
+                        "log_id": log.id,
+                        "employee": self._employee_payload(employee) if employee else None,
+                        "attendance": self._status_payload(employee) if employee else self._empty_status_payload(),
+                    }
+                )
+
+            return self._json_response(
+                {
+                    "accepted": True,
+                    "punch_type": log.punch_type,
+                    "log_id": log.id,
+                    "employee": self._employee_payload(employee),
+                    "attendance": self._status_payload(employee),
+                }
+            )
+        except Exception as e:
+            _logger.exception("Punch failed: %s", e)
+            import traceback
+            return self._json_response({"error": str(e), "traceback": traceback.format_exc()}, status=500)
 
     def _device_payload(self, device):
         return {

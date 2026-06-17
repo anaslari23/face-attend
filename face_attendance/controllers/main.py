@@ -112,17 +112,22 @@ class FaceAttendanceController(http.Controller):
             avatar_write_date = fields.Datetime.to_string(employee.write_date)
             known_write_date = str(known_dates.get(str(employee.id)) or known_dates.get(employee.id) or "")
             include_avatar = not allow_incremental or known_write_date != avatar_write_date
+            
+            avatar_data = employee.image_512
+            if not avatar_data and employee.image_1920:
+                avatar_data = employee.image_1920
+
             payload.append(
                 {
                     "id": employee.id,
                     "name": employee.name,
                     "department": employee.department_id.name if employee.department_id else None,
                     "avatar": (
-                        employee.image_1920.decode("utf-8")
-                        if isinstance(employee.image_1920, bytes)
-                        else employee.image_1920
+                        avatar_data.decode("utf-8")
+                        if isinstance(avatar_data, bytes)
+                        else avatar_data
                     )
-                    if include_avatar
+                    if include_avatar and avatar_data
                     else "",
                     "avatar_write_date": avatar_write_date,
                     "face_enabled": True,

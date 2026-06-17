@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../api/odoo_face_attendance_client.dart';
+import '../models/session.dart';
 import 'face_recognition_service.dart';
 
 class OnDeviceFaceMatcher {
@@ -44,6 +45,7 @@ class OnDeviceFaceMatcher {
       'threshold=${remote.threshold}',
     );
 
+    final unsynced = <ScannerEmployee>[];
     for (final employee in remote.employees.where((item) => item.faceEnabled)) {
       final cached = stored.recordFor(employee.id);
       if (cached != null &&
@@ -52,43 +54,61 @@ class OnDeviceFaceMatcher {
           cached.primaryEmbedding.length == embeddingDimensions &&
           cached.primaryEmbedding.isNotEmpty) {
         records.add(cached.copyWith(name: employee.name));
-        continue;
+      } else {
+        unsynced.add(employee);
       }
+    }
 
-      if (employee.avatar.isEmpty) {
-        failures.add('${employee.name}: missing avatar');
-        continue;
-      }
+    if (unsynced.isNotEmpty) {
+      // Process unsynced employees using a concurrency pool to speed up embedding computation
+      const concurrency = 4;
+      var index = 0;
 
-      try {
-        final avatarBytes = base64Decode(employee.avatar);
-        final embedding = await _faceService.embedImageBytes(avatarBytes);
-        if (!embedding.valid || embedding.embedding == null) {
-          failures.add(
-            '${employee.name}: ${embedding.error ?? 'invalid avatar'}',
-          );
-          continue;
+      Future<void> worker() async {
+        while (true) {
+          final myIndex = index++;
+          if (myIndex >= unsynced.length) break;
+
+          final employee = unsynced[myIndex];
+          if (employee.avatar.isEmpty) {
+            failures.add('${employee.name}: missing avatar');
+            continue;
+          }
+
+          try {
+            final avatarBytes = base64Decode(employee.avatar);
+            final embedding = await _faceService.embedImageBytes(avatarBytes);
+            if (!embedding.valid || embedding.embedding == null) {
+              failures.add(
+                '${employee.name}: ${embedding.error ?? 'invalid avatar'}',
+              );
+              continue;
+            }
+            records.add(
+              LocalFaceRecord(
+                employeeId: employee.id,
+                employeeName: employee.name,
+                department: employee.department,
+                avatarWriteDate: employee.avatarWriteDate,
+                primaryEmbedding: embedding.embedding!.toList(),
+                adaptiveEmbeddings: const [],
+              ),
+            );
+            debugPrint(
+              'FaceAttend sync indexed ${employee.id} ${employee.name} '
+              'dim=${embedding.embedding!.length}',
+            );
+          } catch (error) {
+            failures.add('${employee.name}: $error');
+            debugPrint(
+              'FaceAttend sync failed ${employee.id} ${employee.name}: $error',
+            );
+          }
         }
-        records.add(
-          LocalFaceRecord(
-            employeeId: employee.id,
-            employeeName: employee.name,
-            department: employee.department,
-            avatarWriteDate: employee.avatarWriteDate,
-            primaryEmbedding: embedding.embedding!.toList(),
-            adaptiveEmbeddings: const [],
-          ),
-        );
-        debugPrint(
-          'FaceAttend sync indexed ${employee.id} ${employee.name} '
-          'dim=${embedding.embedding!.length}',
-        );
-      } catch (error) {
-        failures.add('${employee.name}: $error');
-        debugPrint(
-          'FaceAttend sync failed ${employee.id} ${employee.name}: $error',
-        );
       }
+
+      final workers = List.generate(concurrency, (_) => worker());
+      await Future.wait(workers);
     }
 
     final index = LocalFaceIndex(

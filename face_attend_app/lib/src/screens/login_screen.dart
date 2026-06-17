@@ -190,6 +190,7 @@ class _LoginScreenState extends State<LoginScreen>
                             if (_availableDbs != null &&
                                 _availableDbs!.isNotEmpty)
                               DropdownButtonFormField<String>(
+                                isExpanded: true,
                                 initialValue: _availableDbs!.contains(_db.text)
                                     ? _db.text
                                     : null,
@@ -214,7 +215,10 @@ class _LoginScreenState extends State<LoginScreen>
                                     .map(
                                       (db) => DropdownMenuItem(
                                         value: db,
-                                        child: Text(db),
+                                        child: Text(
+                                          db,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
                                     )
                                     .toList(),
@@ -263,8 +267,8 @@ class _LoginScreenState extends State<LoginScreen>
                                 decoration: BoxDecoration(
                                   gradient: const LinearGradient(
                                     colors: [
-                                      Color(0xFF059669),
-                                      Color(0xFF10B981),
+                                      Color(0xFFEDA672),
+                                      Color(0xFFE57C38),
                                     ],
                                     begin: Alignment.topLeft,
                                     end: Alignment.bottomRight,
@@ -273,7 +277,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   boxShadow: [
                                     BoxShadow(
                                       color: const Color(
-                                        0xFF10B981,
+                                        0xFFEDA672,
                                       ).withValues(alpha: 0.3),
                                       blurRadius: 12,
                                       offset: const Offset(0, 6),

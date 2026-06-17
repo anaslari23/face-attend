@@ -591,7 +591,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: Colors.white,
       appBar: AppBar(title: const Text('Scan Attendance')),
       body: Column(
         children: [
@@ -641,7 +641,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                     gradient: _busy
                         ? null
                         : const LinearGradient(
-                            colors: [Color(0xFFFF6B35), Color(0xFFFFC107)],
+                            colors: [Color(0xFFEDA672), Color(0xFFE57C38)],
                             begin: Alignment.centerLeft,
                             end: Alignment.centerRight,
                           ),
@@ -652,7 +652,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                         : [
                             BoxShadow(
                               color: const Color(
-                                0xFFFF6B35,
+                                0xFFEDA672,
                               ).withValues(alpha: 0.25),
                               blurRadius: 10,
                               offset: const Offset(0, 4),
@@ -679,7 +679,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Color(0xFFFF6B35),
+                              color: Color(0xFFEDA672),
                             ),
                           )
                         : Row(

@@ -10,8 +10,8 @@ class FaceAttendColors {
   static const ink = Color(0xFF0F172A);
   static const muted = Color(0xFF64748B);
   static const border = Color(0xFFE2E8F0);
-  static const accent = Color(0xFF059669);
-  static const accentSoft = Color(0xFFECFDF5);
+  static const accent = Color(0xFFEDA672);
+  static const accentSoft = Color(0xFFFFF4EC);
   static const success = Color(0xFF10B981);
   static const warning = Color(0xFFF59E0B);
   static const danger = Color(0xFFEF4444);

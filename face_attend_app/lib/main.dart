@@ -399,7 +399,7 @@ class _QuickActionCard extends StatelessWidget {
             decoration: BoxDecoration(
               gradient: isPrimary
                   ? const LinearGradient(
-                      colors: [Color(0xFF059669), Color(0xFF10B981)],
+                      colors: [Color(0xFFEDA672), Color(0xFFE57C38)],
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     )

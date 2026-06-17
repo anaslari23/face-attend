@@ -143,7 +143,7 @@ class _AttendanceResultScreenState extends State<AttendanceResultScreen> {
                           height: 50,
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
-                              colors: [Color(0xFF059669), Color(0xFF10B981)],
+                              colors: [Color(0xFFEDA672), Color(0xFFE57C38)],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
@@ -151,7 +151,7 @@ class _AttendanceResultScreenState extends State<AttendanceResultScreen> {
                             boxShadow: [
                               BoxShadow(
                                 color: const Color(
-                                  0xFF10B981,
+                                  0xFFEDA672,
                                 ).withValues(alpha: 0.25),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),

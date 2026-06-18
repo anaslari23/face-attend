@@ -38,6 +38,10 @@ class OdooFaceAttendanceClient {
     return [];
   }
 
+  Future<Map<String, dynamic>> getPublicConfig() async {
+    return _get('/public/config', authenticated: false);
+  }
+
   Future<MobileSession> setupScanner({
     required String db,
     required String setupCode,
@@ -124,8 +128,8 @@ class OdooFaceAttendanceClient {
     return PunchResult.fromJson(payload);
   }
 
-  Future<Map<String, dynamic>> _get(String path) async {
-    final response = await _http.get(_uri(path), headers: _headers());
+  Future<Map<String, dynamic>> _get(String path, {bool authenticated = true}) async {
+    final response = await _http.get(_uri(path), headers: _headers(authenticated: authenticated));
     return _decode(response);
   }
 

@@ -49,7 +49,34 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _fetchingDb = true);
     try {
       final client = OdooFaceAttendanceClient(baseUrl: _baseUrl.text.trim());
-      final dbs = await client.listDatabases();
+      List<String> dbs = [];
+      try {
+        final config = await client.getPublicConfig();
+        // Print the public config on the terminal as requested
+        print('--- public/config response ---');
+        print(config);
+        print('------------------------------');
+
+        final listDb = config['list_db'] as bool? ?? true;
+        if (listDb) {
+          dbs = await client.listDatabases();
+        } else {
+          final dbNameVal = config['db_name'];
+          if (dbNameVal is List) {
+            dbs = dbNameVal.map((e) => e.toString()).toList();
+          } else if (dbNameVal is String) {
+            dbs = [dbNameVal];
+          }
+        }
+      } catch (configError) {
+        print(
+          'Failed to fetch public config, falling back to standard database list: $configError',
+        );
+        dbs = await client.listDatabases();
+      }
+
+      print('Databases list retrieved: $dbs');
+
       setState(() {
         _availableDbs = dbs;
         if (dbs.isNotEmpty && !_availableDbs!.contains(_db.text)) {
@@ -134,7 +161,7 @@ class _LoginScreenState extends State<LoginScreen>
                   const AnimatedEntrance(
                     delay: Duration(milliseconds: 100),
                     child: Text(
-                      'FaceAttend',
+                      'PISmartPunch',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 36,

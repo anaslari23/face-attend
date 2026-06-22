@@ -334,6 +334,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               ? (payload['liveness_score'] as num).toDouble() 
               : null,
           spoofScore: (payload['spoof_score'] as num).toDouble(),
+          timestamp: now.toIso8601String(),
         );
         // 2. Mark local log as synced
         await LocalLogService.instance.updateLogSyncStatus(logId, isSynced: true);
@@ -448,6 +449,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         failureReason: error,
         livenessPassed: false,
         spoofScore: 1.0,
+        timestamp: now.toIso8601String(),
       );
       await LocalLogService.instance.updateLogSyncStatus(logId, isSynced: true);
     } catch (_) {

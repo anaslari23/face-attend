@@ -52,7 +52,8 @@ class _FaceScanViewState extends State<FaceScanView>
 
   @override
   Widget build(BuildContext context) {
-    final initialized = widget.camera != null && widget.camera!.value.isInitialized;
+    final initialized =
+        widget.camera != null && widget.camera!.value.isInitialized;
     return Container(
       width: double.infinity,
       color: Colors.black,
@@ -63,7 +64,10 @@ class _FaceScanViewState extends State<FaceScanView>
             _CameraPreviewCover(camera: widget.camera!)
           else
             Center(
-              child: Text(widget.message, style: const TextStyle(color: Colors.white)),
+              child: Text(
+                widget.message,
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           AnimatedBuilder(
             animation: _scanController,
@@ -72,7 +76,8 @@ class _FaceScanViewState extends State<FaceScanView>
                 faceBounds: widget.faceBounds,
                 faceOverlays: widget.faceOverlays,
                 imageSize: widget.faceImageSize,
-                isFrontCamera: widget.camera?.description.lensDirection ==
+                isFrontCamera:
+                    widget.camera?.description.lensDirection ==
                     CameraLensDirection.front,
                 ready: widget.faceReady,
                 animationValue: _scanController.value,
@@ -199,13 +204,16 @@ class _FaceGuidePainter extends CustomPainter {
     }
 
     // Scale factors to map camera image coordinates to preview size coordinates
-    final double scale = math.max(size.width / imageSize!.width, size.height / imageSize!.height);
+    final double scale = math.max(
+      size.width / imageSize!.width,
+      size.height / imageSize!.height,
+    );
     final double offsetX = (size.width - imageSize!.width * scale) / 2;
     final double offsetY = (size.height - imageSize!.height * scale) / 2;
 
     double left = faceBounds!.left * scale + offsetX;
     double right = faceBounds!.right * scale + offsetX;
-    
+
     if (isFrontCamera) {
       // Horizontally mirror the X coordinates for front camera
       final double mirroredLeft = size.width - right;
@@ -216,13 +224,17 @@ class _FaceGuidePainter extends CustomPainter {
 
     final double top = faceBounds!.top * scale + offsetY;
     final double bottom = faceBounds!.bottom * scale + offsetY;
-    
+
     final Rect faceRect = Rect.fromLTRB(left, top, right, bottom);
-    
+
     // Clamp values to ensure circle stays beautifully on screen
-    final double calculatedRadius = math.max(faceRect.width, faceRect.height) * 0.65;
-    final double radius = calculatedRadius.clamp(size.width * 0.20, size.width * 0.45);
-    
+    final double calculatedRadius =
+        math.max(faceRect.width, faceRect.height) * 0.65;
+    final double radius = calculatedRadius.clamp(
+      size.width * 0.20,
+      size.width * 0.45,
+    );
+
     final Offset center = Offset(
       faceRect.center.dx.clamp(radius + 10, size.width - radius - 10),
       faceRect.center.dy.clamp(radius + 10, size.height - radius - 10),
@@ -230,7 +242,7 @@ class _FaceGuidePainter extends CustomPainter {
 
     final Color color = ready ? const Color(0xFF30D158) : scanColor;
 
-    final cutoutPath = Path()..addOval(Rect.fromCircle(center: center, radius: radius));
+    //final cutoutPath = Path()..addOval(Rect.fromCircle(center: center, radius: radius));
 
     // Draw thin circular border
     final borderPaint = Paint()
@@ -239,16 +251,22 @@ class _FaceGuidePainter extends CustomPainter {
       ..strokeWidth = 3.0;
     canvas.drawCircle(center, radius, borderPaint);
 
-
-
     // Draw label
-    final String labelText = ready 
-        ? "MATCHED" 
-        : (isFaceDetected || faceOverlays.isNotEmpty ? "SCANNING..." : "ALIGN FACE");
+    final String labelText = ready
+        ? "MATCHED"
+        : (isFaceDetected || faceOverlays.isNotEmpty
+              ? "SCANNING..."
+              : "ALIGN FACE");
     _drawLabel(canvas, center, radius, labelText, color);
   }
 
-  void _drawLabel(Canvas canvas, Offset center, double radius, String label, Color color) {
+  void _drawLabel(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    String label,
+    Color color,
+  ) {
     final textPainter = TextPainter(
       text: TextSpan(
         text: label,
@@ -262,7 +280,7 @@ class _FaceGuidePainter extends CustomPainter {
       maxLines: 1,
       ellipsis: '...',
     )..layout(maxWidth: 180);
-    
+
     final labelRect = RRect.fromRectAndRadius(
       Rect.fromLTWH(
         center.dx - (textPainter.width + 18) / 2, // Centered label

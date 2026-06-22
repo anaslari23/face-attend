@@ -23,6 +23,25 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
   List<LocalPunchLog> _logs = [];
   bool _loading = true;
   bool _syncing = false;
+  DateTimeRange? _selectedDateRange;
+
+  List<LocalPunchLog> get _filteredLogs {
+    if (_selectedDateRange == null) {
+      return _logs;
+    }
+    return _logs.where((log) {
+      final date = log.timestamp;
+      final startDate = _selectedDateRange!.start;
+      final endDate = _selectedDateRange!.end;
+      
+      final logDate = DateTime(date.year, date.month, date.day);
+      final compareStart = DateTime(startDate.year, startDate.month, startDate.day);
+      final compareEnd = DateTime(endDate.year, endDate.month, endDate.day);
+      
+      return (logDate.isAtSameMomentAs(compareStart) || logDate.isAfter(compareStart)) &&
+             (logDate.isAtSameMomentAs(compareEnd) || logDate.isBefore(compareEnd));
+    }).toList();
+  }
 
   @override
   void initState() {
@@ -131,6 +150,189 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
     return '';
   }
 
+  String _formatDateShort(DateTime dt) {
+    final day = dt.day.toString().padLeft(2, '0');
+    final month = _monthName(dt.month);
+    final year = dt.year;
+    final currentYear = DateTime.now().year;
+    if (year == currentYear) {
+      return '$day $month';
+    } else {
+      return '$day $month $year';
+    }
+  }
+
+  Future<void> _selectDateRange() async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      initialDateRange: _selectedDateRange,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: FaceAttendColors.accent,
+              onPrimary: Colors.white,
+              onSurface: FaceAttendColors.ink,
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: FaceAttendColors.accent,
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (picked != null) {
+      setState(() {
+        _selectedDateRange = picked;
+      });
+    }
+  }
+
+  Widget _buildFilterBar() {
+    final hasFilter = _selectedDateRange != null;
+    final start = _selectedDateRange?.start;
+    final end = _selectedDateRange?.end;
+    
+    String label = 'All Logs (No Filter)';
+    if (hasFilter) {
+      final startStr = _formatDateShort(start!);
+      final endStr = _formatDateShort(end!);
+      label = startStr == endStr ? startStr : '$startStr - $endStr';
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        border: Border(
+          bottom: BorderSide(color: FaceAttendColors.border, width: 0.8),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.filter_list_outlined,
+            size: 20,
+            color: hasFilter ? FaceAttendColors.accent : FaceAttendColors.muted,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: InkWell(
+              onTap: _selectDateRange,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
+                child: Row(
+                  children: [
+                    const Text(
+                      'Filter: ',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: FaceAttendColors.muted,
+                      ),
+                    ),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: hasFilter ? FaceAttendColors.accent : FaceAttendColors.ink,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          if (hasFilter)
+            IconButton(
+              icon: const Icon(Icons.clear, size: 18, color: FaceAttendColors.danger),
+              tooltip: 'Clear Date Filter',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: () {
+                setState(() {
+                  _selectedDateRange = null;
+                });
+              },
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.calendar_month_outlined, size: 18, color: FaceAttendColors.muted),
+              tooltip: 'Select Date Range',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: _selectDateRange,
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilteredEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(24),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.calendar_today_outlined,
+              size: 64,
+              color: FaceAttendColors.muted.withValues(alpha: 0.4),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'No Logs in Selected Range',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+              color: FaceAttendColors.ink,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Try selecting a different date range or clear the filter.',
+            style: TextStyle(
+              fontSize: 13,
+              color: FaceAttendColors.muted,
+            ),
+          ),
+          const SizedBox(height: 16),
+          ElevatedButton.icon(
+            onPressed: () {
+              setState(() {
+                _selectedDateRange = null;
+              });
+            },
+            icon: const Icon(Icons.clear, size: 18),
+            label: const Text('Clear Filter'),
+            style: ElevatedButton.styleFrom(
+              foregroundColor: Colors.white,
+              backgroundColor: FaceAttendColors.accent,
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final pendingCount = _logs.where((l) => !l.isSynced).length;
@@ -145,20 +347,21 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
             tooltip: 'Clear History',
             onPressed: _logs.isEmpty ? null : _clearLogs,
           ),
-          if (_logs.isNotEmpty)
+          if (_filteredLogs.isNotEmpty)
             PopupMenuButton<String>(
               icon: const Icon(Icons.download_outlined),
               tooltip: 'Export Logs',
               onSelected: (value) async {
+                final messenger = ScaffoldMessenger.of(context);
                 try {
                   if (value == 'pdf') {
-                    await LogExportService.exportToPdf(_logs);
+                    await LogExportService.exportToPdf(_filteredLogs);
                   } else if (value == 'excel') {
-                    await LogExportService.exportToExcel(_logs);
+                    await LogExportService.exportToExcel(_filteredLogs);
                   }
                 } catch (e) {
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    messenger.showSnackBar(
                       SnackBar(
                         content: Text('Failed to export logs: $e'),
                         backgroundColor: FaceAttendColors.danger,
@@ -246,32 +449,36 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
                 ),
               ),
             
+            _buildFilterBar(),
+
             Expanded(
               child: _loading
                   ? const Center(child: AppLoader())
                   : _logs.isEmpty
                       ? _buildEmptyState()
-                      : RefreshIndicator(
-                          onRefresh: _loadLogs,
-                          child: ListView.builder(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                            itemCount: _logs.length,
-                            itemBuilder: (context, index) {
-                              final log = _logs[index];
-                              return AnimatedEntrance(
-                                delay: Duration(milliseconds: index * 30),
-                                child: Padding(
-                                  padding: const EdgeInsets.only(bottom: 12),
-                                  child: _LogCard(
-                                    log: log,
-                                    formattedTime: _formatDateTime(log.timestamp),
-                                    onTap: () => _showLogDetails(log),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                        ),
+                      : _filteredLogs.isEmpty
+                          ? _buildFilteredEmptyState()
+                          : RefreshIndicator(
+                              onRefresh: _loadLogs,
+                              child: ListView.builder(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                itemCount: _filteredLogs.length,
+                                itemBuilder: (context, index) {
+                                  final log = _filteredLogs[index];
+                                  return AnimatedEntrance(
+                                    delay: Duration(milliseconds: index * 30),
+                                    child: Padding(
+                                      padding: const EdgeInsets.only(bottom: 12),
+                                      child: _LogCard(
+                                        log: log,
+                                        formattedTime: _formatDateTime(log.timestamp),
+                                        onTap: () => _showLogDetails(log),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
             ),
           ],
         ),

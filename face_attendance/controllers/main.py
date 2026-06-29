@@ -41,6 +41,20 @@ class FaceAttendanceController(http.Controller):
         )
         if not device:
             return None
+
+        # Cross-device session check: Ensure token is only used by the device it was registered on.
+        request_device_id = request.httprequest.headers.get("X-Device-ID", "").strip()
+        if device.device_uid:
+            if not request_device_id or device.device_uid != request_device_id:
+                _logger.warning(
+                    "Device mismatch for token authentication. Expected device_uid: %s, received X-Device-ID: %s",
+                    device.device_uid,
+                    request_device_id,
+                )
+                return None
+        elif request_device_id and device.device_type == "scanner":
+            device.sudo().write({"device_uid": request_device_id})
+
         device.last_seen_at = fields.Datetime.now()
         return device
 
@@ -66,6 +80,7 @@ class FaceAttendanceController(http.Controller):
     def scanner_setup(self, **kwargs):
         body = self._body()
         setup_code = (body.get("setup_code") or "").strip()
+        device_id = (body.get("device_id") or "").strip()
         if not setup_code:
             return self._json_response({"error": "setup_code_required"}, status=400)
 
@@ -80,6 +95,16 @@ class FaceAttendanceController(http.Controller):
         )
         if not device:
             return self._json_response({"error": "invalid_scanner_setup_code"}, status=401)
+
+        # Enforce unique device token binding to prevent sharing the setup code across devices
+        if device.device_uid:
+            if not device_id or device.device_uid != device_id:
+                return self._json_response(
+                    {"error": "token_already_registered_to_another_device"},
+                    status=403
+                )
+        elif device_id:
+            device.sudo().write({"device_uid": device_id})
 
         device.last_seen_at = fields.Datetime.now()
         return self._json_response(
@@ -309,6 +334,7 @@ class FaceAttendanceController(http.Controller):
                     "accepted": log_accepted,
                     "failure_reason": failure_reason,
                     "raw_payload": json.dumps(body),
+                    "create_date": now,
                 }
             )
 

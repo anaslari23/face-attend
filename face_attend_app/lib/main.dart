@@ -120,6 +120,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       baseUrl: widget.session.baseUrl,
       db: widget.session.db,
       token: widget.session.token,
+      deviceId: widget.session.deviceId,
     );
     _statusFuture = _client.status();
     _bgController = AnimationController(

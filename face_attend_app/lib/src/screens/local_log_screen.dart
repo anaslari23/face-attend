@@ -50,6 +50,7 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
       baseUrl: widget.session.baseUrl,
       db: widget.session.db,
       token: widget.session.token,
+      deviceId: widget.session.deviceId,
     );
     _loadLogs();
   }

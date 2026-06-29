@@ -56,6 +56,23 @@ class LocalLogService {
     return File('${directory.path}/$_fileName');
   }
 
+  DateTime _getCutoffDate(DateTime now) {
+    int workingDaysFound = 0;
+    DateTime current = DateTime(now.year, now.month, now.day);
+    while (true) {
+      if (current.weekday != DateTime.saturday && current.weekday != DateTime.sunday) {
+        workingDaysFound++;
+        if (workingDaysFound == 5) {
+          return current;
+        }
+      }
+      current = current.subtract(const Duration(days: 1));
+    }
+  }
+
+  @visibleForTesting
+  DateTime getCutoffDateForTesting(DateTime now) => _getCutoffDate(now);
+
   Future<List<LocalPunchLog>> getLogs() async {
     if (_cache != null) {
       return _cache!;
@@ -73,6 +90,16 @@ class LocalLogService {
           .toList();
       // Sort with newest logs first
       _cache!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+
+      // Prune logs older than 5 working days
+      final cutoff = _getCutoffDate(DateTime.now());
+      final originalLength = _cache!.length;
+      _cache = _cache!.where((log) => log.timestamp.isAfter(cutoff) || log.timestamp.isAtSameMomentAs(cutoff)).toList();
+
+      if (_cache!.length < originalLength) {
+        saveLogs(_cache!);
+      }
+
       return _cache!;
     } catch (e) {
       debugPrint('Error reading local logs: $e');
@@ -85,7 +112,11 @@ class LocalLogService {
     try {
       _cache = List.from(logs);
       _cache!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-      
+
+      // Prune logs older than 5 working days
+      final cutoff = _getCutoffDate(DateTime.now());
+      _cache = _cache!.where((log) => log.timestamp.isAfter(cutoff) || log.timestamp.isAtSameMomentAs(cutoff)).toList();
+
       // Limit list size to avoid infinite storage growth
       if (_cache!.length > _maxLogCount) {
         _cache = _cache!.sublist(0, _maxLogCount);

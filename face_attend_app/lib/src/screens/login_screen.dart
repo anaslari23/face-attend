@@ -4,6 +4,7 @@ import 'package:face_attend_app/main.dart';
 
 import '../api/odoo_face_attendance_client.dart';
 import '../models/session.dart';
+import '../services/device_service.dart';
 import '../theme/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -103,22 +104,29 @@ class _LoginScreenState extends State<LoginScreen>
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
+      final deviceIdentity = await DeviceService().identity();
       final client = OdooFaceAttendanceClient(baseUrl: _baseUrl.text.trim());
       final session = await client.setupScanner(
         db: _db.text.trim(),
         setupCode: _setupCode.text.trim(),
+        deviceId: deviceIdentity.id,
       );
       await OdooFaceAttendanceClient(
         baseUrl: session.baseUrl,
         db: session.db,
         token: session.token,
+        deviceId: session.deviceId,
       ).status();
       widget.onLoggedIn(session);
     } catch (error) {
       if (!mounted) return;
+      String message = error.toString();
+      if (message.contains('token_already_registered_to_another_device')) {
+        message = 'This setup code is already in use on another device.';
+      }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
+      ).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted) setState(() => _loading = false);
     }

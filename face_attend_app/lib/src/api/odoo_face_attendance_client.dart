@@ -9,12 +9,14 @@ class OdooFaceAttendanceClient {
     required this.baseUrl,
     this.db,
     this.token,
+    this.deviceId,
     http.Client? httpClient,
   }) : _http = httpClient ?? http.Client();
 
   final String baseUrl;
   final String? db;
   final String? token;
+  final String? deviceId;
   final http.Client _http;
 
   Future<List<String>> listDatabases() async {
@@ -45,10 +47,14 @@ class OdooFaceAttendanceClient {
   Future<MobileSession> setupScanner({
     required String db,
     required String setupCode,
+    required String deviceId,
   }) async {
     final payload = await _post(
       '/face_attendance/scanner/setup',
-      {'setup_code': setupCode},
+      {
+        'setup_code': setupCode,
+        'device_id': deviceId,
+      },
       authenticated: false,
       extraDb: db,
     );
@@ -57,8 +63,8 @@ class OdooFaceAttendanceClient {
       baseUrl: baseUrl,
       db: db,
       token: payload['token'] as String,
-      deviceId: device['device_uid'] as String,
-      deviceName: device['name'] as String,
+      deviceId: device['device_uid'] as String? ?? deviceId,
+      deviceName: device['name'] as String? ?? 'Shared Scanner',
     );
   }
 
@@ -159,6 +165,7 @@ class OdooFaceAttendanceClient {
     return {
       'Content-Type': 'application/json',
       if (authenticated && token != null) 'Authorization': 'Bearer $token',
+      if (deviceId != null && deviceId!.isNotEmpty) 'X-Device-ID': deviceId!,
       ...?(currentDb == null ? null : {'X-Odoo-Database': currentDb}),
     };
   }

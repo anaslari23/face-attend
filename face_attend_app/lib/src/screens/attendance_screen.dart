@@ -70,6 +70,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       baseUrl: widget.session.baseUrl,
       db: widget.session.db,
       token: widget.session.token,
+      deviceId: widget.session.deviceId,
     );
     _matcher = OnDeviceFaceMatcher(client: _client, faceService: _faceService);
     _init();

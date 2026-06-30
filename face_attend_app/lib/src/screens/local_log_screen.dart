@@ -24,6 +24,9 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
   bool _loading = true;
   bool _syncing = false;
   DateTimeRange? _selectedDateRange;
+  String _viewMode = 'list'; // 'list', 'calendar', 'kanban'
+  DateTime _calendarFocusedMonth = DateTime.now();
+  DateTime _calendarSelectedDay = DateTime.now();
 
   List<LocalPunchLog> get _filteredLogs {
     if (_selectedDateRange == null) {
@@ -41,6 +44,26 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
       return (logDate.isAtSameMomentAs(compareStart) || logDate.isAfter(compareStart)) &&
              (logDate.isAtSameMomentAs(compareEnd) || logDate.isBefore(compareEnd));
     }).toList();
+  }
+
+  List<LocalPunchLog> _getLogsForDate(DateTime date) {
+    return _filteredLogs.where((log) {
+      return log.timestamp.year == date.year &&
+             log.timestamp.month == date.month &&
+             log.timestamp.day == date.day;
+    }).toList();
+  }
+
+  List<LocalPunchLog> get _offlineQueueLogs {
+    return _filteredLogs.where((log) => !log.isSynced && log.syncError == null).toList();
+  }
+
+  List<LocalPunchLog> get _syncErrorLogs {
+    return _filteredLogs.where((log) => !log.isSynced && log.syncError != null).toList();
+  }
+
+  List<LocalPunchLog> get _syncedLogs {
+    return _filteredLogs.where((log) => log.isSynced).toList();
   }
 
   @override
@@ -451,35 +474,40 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
               ),
             
             _buildFilterBar(),
+            _buildViewSelector(),
 
             Expanded(
               child: _loading
                   ? const Center(child: AppLoader())
                   : _logs.isEmpty
                       ? _buildEmptyState()
-                      : _filteredLogs.isEmpty
-                          ? _buildFilteredEmptyState()
-                          : RefreshIndicator(
-                              onRefresh: _loadLogs,
-                              child: ListView.builder(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                                itemCount: _filteredLogs.length,
-                                itemBuilder: (context, index) {
-                                  final log = _filteredLogs[index];
-                                  return AnimatedEntrance(
-                                    delay: Duration(milliseconds: index * 30),
-                                    child: Padding(
-                                      padding: const EdgeInsets.only(bottom: 12),
-                                      child: _LogCard(
-                                        log: log,
-                                        formattedTime: _formatDateTime(log.timestamp),
-                                        onTap: () => _showLogDetails(log),
+                      : _viewMode == 'calendar'
+                          ? _buildCalendarView()
+                          : _viewMode == 'kanban'
+                              ? _buildKanbanView()
+                              : _filteredLogs.isEmpty
+                                  ? _buildFilteredEmptyState()
+                                  : RefreshIndicator(
+                                      onRefresh: _loadLogs,
+                                      child: ListView.builder(
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                                        itemCount: _filteredLogs.length,
+                                        itemBuilder: (context, index) {
+                                          final log = _filteredLogs[index];
+                                          return AnimatedEntrance(
+                                            delay: Duration(milliseconds: index * 30),
+                                            child: Padding(
+                                              padding: const EdgeInsets.only(bottom: 12),
+                                              child: _LogCard(
+                                                log: log,
+                                                formattedTime: _formatDateTime(log.timestamp),
+                                                onTap: () => _showLogDetails(log),
+                                              ),
+                                            ),
+                                          );
+                                        },
                                       ),
                                     ),
-                                  );
-                                },
-                              ),
-                            ),
             ),
           ],
         ),
@@ -537,6 +565,495 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
           formattedTime: _formatDateTime(log.timestamp),
         );
       },
+    );
+  }
+
+  Widget _buildViewSelector() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Colors.white,
+      child: Container(
+        decoration: BoxDecoration(
+          color: FaceAttendColors.surfaceMuted,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: FaceAttendColors.border, width: 0.8),
+        ),
+        padding: const EdgeInsets.all(4),
+        child: Row(
+          children: [
+            _buildSelectorButton('list', Icons.format_list_bulleted, 'List'),
+            _buildSelectorButton('calendar', Icons.calendar_month, 'Calendar'),
+            _buildSelectorButton('kanban', Icons.view_kanban, 'Kanban'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectorButton(String mode, IconData icon, String label) {
+    final isSelected = _viewMode == mode;
+    return Expanded(
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _viewMode = mode;
+          });
+        },
+        borderRadius: BorderRadius.circular(8),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(8),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    )
+                  ]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 16,
+                color: isSelected ? FaceAttendColors.accent : FaceAttendColors.muted,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                  color: isSelected ? FaceAttendColors.ink : FaceAttendColors.muted,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCalendarView() {
+    final year = _calendarFocusedMonth.year;
+    final month = _calendarFocusedMonth.month;
+    final firstDay = DateTime(year, month, 1);
+    final daysCount = DateTime(year, month + 1, 0).day;
+    
+    // firstDay.weekday: Monday is 1, Sunday is 7
+    final emptyPrefixCells = firstDay.weekday - 1;
+    final totalCells = emptyPrefixCells + daysCount;
+
+    final weekdays = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+
+    return Column(
+      children: [
+        // Month Header Selector
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                onPressed: () {
+                  setState(() {
+                    _calendarFocusedMonth = DateTime(year, month - 1, 1);
+                  });
+                },
+              ),
+              Text(
+                '${_monthName(month)} $year',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: FaceAttendColors.ink,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                onPressed: () {
+                  setState(() {
+                    _calendarFocusedMonth = DateTime(year, month + 1, 1);
+                  });
+                },
+              ),
+            ],
+          ),
+        ),
+        
+        // Weekdays labels
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: weekdays.map((day) => Expanded(
+              child: Center(
+                child: Text(
+                  day,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: FaceAttendColors.muted,
+                  ),
+                ),
+              ),
+            )).toList(),
+          ),
+        ),
+        const SizedBox(height: 8),
+        
+        // Calendar Grid
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
+              childAspectRatio: 1.0,
+            ),
+            itemCount: totalCells,
+            itemBuilder: (context, index) {
+              if (index < emptyPrefixCells) {
+                return const SizedBox();
+              }
+              final day = index - emptyPrefixCells + 1;
+              final date = DateTime(year, month, day);
+              final isSelected = date.year == _calendarSelectedDay.year &&
+                  date.month == _calendarSelectedDay.month &&
+                  date.day == _calendarSelectedDay.day;
+              
+              final dayLogs = _getLogsForDate(date);
+              final hasLogs = dayLogs.isNotEmpty;
+
+              // Determine dots to show
+              final hasPending = dayLogs.any((l) => !l.isSynced && l.syncError == null);
+              final hasError = dayLogs.any((l) => l.syncError != null);
+              final hasSynced = dayLogs.any((l) => l.isSynced);
+
+              return InkWell(
+                onTap: () {
+                  setState(() {
+                    _calendarSelectedDay = date;
+                  });
+                },
+                borderRadius: BorderRadius.circular(12),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 150),
+                  decoration: BoxDecoration(
+                    color: isSelected
+                        ? FaceAttendColors.accent
+                        : (hasLogs ? FaceAttendColors.surfaceMuted : Colors.transparent),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: isSelected 
+                          ? FaceAttendColors.accent 
+                          : (DateTime.now().year == date.year && DateTime.now().month == date.month && DateTime.now().day == date.day
+                              ? FaceAttendColors.accent.withValues(alpha: 0.5) 
+                              : Colors.transparent),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        '$day',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                          color: isSelected
+                              ? Colors.white
+                              : (hasLogs ? FaceAttendColors.ink : FaceAttendColors.ink.withValues(alpha: 0.8)),
+                        ),
+                      ),
+                      if (hasLogs) ...[
+                        const SizedBox(height: 3),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            if (hasError)
+                              Container(
+                                width: 4,
+                                height: 4,
+                                margin: const EdgeInsets.symmetric(horizontal: 1),
+                                decoration: const BoxDecoration(
+                                  color: FaceAttendColors.danger,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            if (hasPending)
+                              Container(
+                                width: 4,
+                                height: 4,
+                                margin: const EdgeInsets.symmetric(horizontal: 1),
+                                decoration: const BoxDecoration(
+                                  color: FaceAttendColors.warning,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                            if (hasSynced)
+                              Container(
+                                width: 4,
+                                height: 4,
+                                margin: const EdgeInsets.symmetric(horizontal: 1),
+                                decoration: const BoxDecoration(
+                                  color: FaceAttendColors.success,
+                                  shape: BoxShape.circle,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        const Divider(color: FaceAttendColors.border, height: 24),
+        
+        // Selected day logs title
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            children: [
+              Icon(Icons.event_note_outlined, size: 16, color: FaceAttendColors.accent),
+              const SizedBox(width: 8),
+              Text(
+                'Scans on ${_formatDateShort(_calendarSelectedDay)}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: FaceAttendColors.ink,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '${_getLogsForDate(_calendarSelectedDay).length} matches',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: FaceAttendColors.muted,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        
+        // Day's logs list
+        Expanded(
+          child: _buildDayLogsList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildDayLogsList() {
+    final dayLogs = _getLogsForDate(_calendarSelectedDay);
+    if (dayLogs.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.inbox_outlined,
+              size: 40,
+              color: FaceAttendColors.muted.withValues(alpha: 0.3),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'No scan activity recorded on this day',
+              style: TextStyle(
+                fontSize: 13,
+                color: FaceAttendColors.muted,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: dayLogs.length,
+      itemBuilder: (context, index) {
+        final log = dayLogs[index];
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: _LogCard(
+            log: log,
+            formattedTime: _formatDateTime(log.timestamp),
+            onTap: () => _showLogDetails(log),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildKanbanView() {
+    final width = MediaQuery.of(context).size.width * 0.82;
+    
+    final offline = _offlineQueueLogs;
+    final errors = _syncErrorLogs;
+    final synced = _syncedLogs;
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildKanbanColumn(
+            title: 'Offline Queue',
+            badgeColor: FaceAttendColors.warning,
+            logs: offline,
+            width: width,
+          ),
+          const SizedBox(width: 16),
+          _buildKanbanColumn(
+            title: 'Sync Error',
+            badgeColor: FaceAttendColors.danger,
+            logs: errors,
+            width: width,
+          ),
+          const SizedBox(width: 16),
+          _buildKanbanColumn(
+            title: 'Synced Logs',
+            badgeColor: FaceAttendColors.success,
+            logs: synced,
+            width: width,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKanbanColumn({
+    required String title,
+    required Color badgeColor,
+    required List<LocalPunchLog> logs,
+    required double width,
+  }) {
+    return Container(
+      width: width,
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: FaceAttendColors.border, width: 0.8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.02),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          )
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Column Header
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: badgeColor,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: FaceAttendColors.ink,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: badgeColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${logs.length}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: badgeColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(color: FaceAttendColors.border, height: 1),
+          
+          // Column Items
+          Expanded(
+            child: logs.isEmpty
+                ? _buildKanbanEmptyState(title)
+                : ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: logs.length,
+                    itemBuilder: (context, index) {
+                      final log = logs[index];
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: _LogCard(
+                          log: log,
+                          formattedTime: _formatDateTime(log.timestamp),
+                          onTap: () => _showLogDetails(log),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildKanbanEmptyState(String title) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.done_all,
+              size: 32,
+              color: FaceAttendColors.muted.withValues(alpha: 0.3),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'No items in $title',
+              style: const TextStyle(
+                fontSize: 12,
+                color: FaceAttendColors.muted,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

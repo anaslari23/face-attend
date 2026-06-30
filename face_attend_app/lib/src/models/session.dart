@@ -35,6 +35,7 @@ class MobileSession {
     required this.token,
     required this.deviceId,
     required this.deviceName,
+    this.generatedDeviceId,
   });
 
   final String baseUrl;
@@ -42,6 +43,7 @@ class MobileSession {
   final String token;
   final String deviceId;
   final String deviceName;
+  final String? generatedDeviceId;
 
   factory MobileSession.fromJson(Map<String, dynamic> json) {
     return MobileSession(
@@ -50,6 +52,7 @@ class MobileSession {
       token: json['token'] as String,
       deviceId: json['device_id'] as String? ?? '',
       deviceName: json['device_name'] as String? ?? 'Shared Scanner',
+      generatedDeviceId: json['generated_device_id'] as String?,
     );
   }
 
@@ -59,6 +62,7 @@ class MobileSession {
     'token': token,
     'device_id': deviceId,
     'device_name': deviceName,
+    'generated_device_id': generatedDeviceId,
   };
 }
 

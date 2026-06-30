@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'dart:math' as math;
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:face_attend_app/main.dart';
 
@@ -26,6 +28,7 @@ class _LoginScreenState extends State<LoginScreen>
   bool _fetchingDb = false;
   List<String>? _availableDbs;
   late final AnimationController _meshController;
+  String? _deviceId;
 
   @override
   void initState() {
@@ -34,6 +37,29 @@ class _LoginScreenState extends State<LoginScreen>
       vsync: this,
       duration: const Duration(seconds: 8),
     )..repeat();
+    _loadDeviceId();
+  }
+
+  Future<void> _loadDeviceId() async {
+    try {
+      final device = await DeviceService().identity();
+      debugPrint('\n=========================================');
+      debugPrint('DEVICE ID: ${device.id}');
+      debugPrint('DEVICE NAME: ${device.name}');
+      if (Platform.isAndroid) {
+        DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+        AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+        debugPrint('Android Model: ${androidInfo.model}');
+      } else if (Platform.isIOS) {
+        DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+        IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
+        debugPrint('iOS Machine: ${iosInfo.utsname.machine}');
+      }
+
+      debugPrint('=========================================\n');
+    } catch (e) {
+      debugPrint('Failed to print device ID at launch: $e');
+    }
   }
 
   @override
@@ -54,9 +80,9 @@ class _LoginScreenState extends State<LoginScreen>
       try {
         final config = await client.getPublicConfig();
         // Print the public config on the terminal as requested
-        print('--- public/config response ---');
-        print(config);
-        print('------------------------------');
+        debugPrint('--- public/config response ---');
+        debugPrint(config.toString());
+        debugPrint('------------------------------');
 
         final listDb = config['list_db'] as bool? ?? true;
         if (listDb) {
@@ -70,13 +96,13 @@ class _LoginScreenState extends State<LoginScreen>
           }
         }
       } catch (configError) {
-        print(
+        debugPrint(
           'Failed to fetch public config, falling back to standard database list: $configError',
         );
         dbs = await client.listDatabases();
       }
 
-      print('Databases list retrieved: $dbs');
+      debugPrint('Databases list retrieved: $dbs');
 
       setState(() {
         _availableDbs = dbs;
@@ -347,44 +373,77 @@ class _LoginScreenState extends State<LoginScreen>
                           shadowColor: FaceAttendColors.accent,
                         ),
                         padding: const EdgeInsets.all(16),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: FaceAttendColors.accentSoft,
-                              ),
-                              child: const Icon(
-                                Icons.info_outline,
-                                color: FaceAttendColors.accent,
-                                size: 20,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Setup Instructions',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: FaceAttendColors.ink,
-                                    ),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: const BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: FaceAttendColors.accentSoft,
                                   ),
-                                  SizedBox(height: 2),
-                                  Text(
-                                    'Point the app to your Odoo server and enter the scanner setup code from the backend. Face matching runs on this phone.',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: FaceAttendColors.muted,
+                                  child: const Icon(
+                                    Icons.info_outline,
+                                    color: FaceAttendColors.accent,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Setup Instructions',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: FaceAttendColors.ink,
+                                        ),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'Point the app to your Odoo server and enter the scanner setup code from the backend. Face matching runs on this phone.',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: FaceAttendColors.muted,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (_deviceId != null) ...[
+                              const Divider(
+                                height: 24,
+                                thickness: 0.8,
+                                color: FaceAttendColors.border,
+                              ),
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.fingerprint,
+                                    color: FaceAttendColors.accent,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: SelectableText(
+                                      'Device Identity ID:\n$_deviceId',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: FaceAttendColors.ink,
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
+                            ],
                           ],
                         ),
                       ),

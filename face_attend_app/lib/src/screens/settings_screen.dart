@@ -62,6 +62,17 @@ class SettingsScreen extends StatelessWidget {
                         color: FaceAttendColors.border,
                       ),
                       _SettingsTile(
+                        icon: Icons.fingerprint,
+                        label: 'Device ID',
+                        value: session.generatedDeviceId ?? 'Not Generated',
+                      ),
+                      const Divider(
+                        height: 1,
+                        thickness: 0.8,
+                        indent: 56,
+                        color: FaceAttendColors.border,
+                      ),
+                      _SettingsTile(
                         icon: Icons.vpn_key,
                         label: 'Scanner Token',
                         value: session.token.isEmpty

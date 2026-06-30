@@ -57,21 +57,35 @@ class LocalLogService {
   }
 
   DateTime _getCutoffDate(DateTime now) {
-    int workingDaysFound = 0;
-    DateTime current = DateTime(now.year, now.month, now.day);
-    while (true) {
-      if (current.weekday != DateTime.saturday && current.weekday != DateTime.sunday) {
-        workingDaysFound++;
-        if (workingDaysFound == 5) {
-          return current;
-        }
-      }
-      current = current.subtract(const Duration(days: 1));
+    final today = DateTime(now.year, now.month, now.day);
+    final deleteTime = DateTime(now.year, now.month, now.day, 23, 50);
+    if (now.isBefore(deleteTime)) {
+      // Before 11:50 PM, we keep data from 6 days ago (e.g. June 24th if today is June 30th)
+      return today.subtract(const Duration(days: 6));
+    } else {
+      // At or after 11:50 PM, the 6-days-ago data is deleted, so the cutoff is June 25th (5 days ago)
+      return today.subtract(const Duration(days: 5));
     }
   }
 
   @visibleForTesting
   DateTime getCutoffDateForTesting(DateTime now) => _getCutoffDate(now);
+
+  @visibleForTesting
+  void setCacheForTesting(List<LocalPunchLog>? mockCache) {
+    _cache = mockCache;
+  }
+
+  Future<void> pruneOldLogs() async {
+    final logs = await getLogs();
+    final cutoff = _getCutoffDate(DateTime.now());
+    final originalLength = logs.length;
+    final pruned = logs.where((log) => log.timestamp.isAfter(cutoff) || log.timestamp.isAtSameMomentAs(cutoff)).toList();
+    if (pruned.length < originalLength) {
+      await saveLogs(pruned);
+      debugPrint('Pruned ${originalLength - pruned.length} old logs at ${DateTime.now()}');
+    }
+  }
 
   Future<List<LocalPunchLog>> getLogs() async {
     if (_cache != null) {
@@ -91,7 +105,7 @@ class LocalLogService {
       // Sort with newest logs first
       _cache!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-      // Prune logs older than 5 working days
+      // Prune logs older than our cutoff
       final cutoff = _getCutoffDate(DateTime.now());
       final originalLength = _cache!.length;
       _cache = _cache!.where((log) => log.timestamp.isAfter(cutoff) || log.timestamp.isAtSameMomentAs(cutoff)).toList();
@@ -113,7 +127,7 @@ class LocalLogService {
       _cache = List.from(logs);
       _cache!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-      // Prune logs older than 5 working days
+      // Prune logs older than our cutoff
       final cutoff = _getCutoffDate(DateTime.now());
       _cache = _cache!.where((log) => log.timestamp.isAfter(cutoff) || log.timestamp.isAtSameMomentAs(cutoff)).toList();
 
@@ -169,6 +183,7 @@ class LocalLogService {
     }
 
     int successCount = 0;
+    bool needsSave = false;
     for (final log in pending) {
       try {
         final p = log.payload;
@@ -202,13 +217,23 @@ class LocalLogService {
         log.isSynced = true;
         log.syncError = null;
         successCount++;
+        needsSave = true;
+      } on FaceAttendanceApiException catch (e) {
+        log.syncError = e.toString();
+        debugPrint('Failed to sync log ${log.id}: $e');
+        if (e.statusCode == 400 || e.statusCode == 422) {
+          // Permanently invalid payload or database rejection (e.g. stale employee ID).
+          // Mark as synced so we do not attempt to retry this log again.
+          log.isSynced = true;
+          needsSave = true;
+        }
       } catch (e) {
         log.syncError = e.toString();
         debugPrint('Failed to sync log ${log.id}: $e');
       }
     }
 
-    if (successCount > 0) {
+    if (needsSave) {
       await saveLogs(logs);
     }
     return successCount;

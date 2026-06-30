@@ -13,6 +13,7 @@ class FaceAttendColors {
   static const accent = Color(0xFFEDA672);
   static const accentSoft = Color(0xFFFFF4EC);
   static const success = Color(0xFF10B981);
+  static const successSoft = Color(0xFFECFDF5);
   static const warning = Color(0xFFF59E0B);
   static const danger = Color(0xFFEF4444);
   static const overlay = Color(0xE60F172A);

@@ -49,22 +49,30 @@ class OdooFaceAttendanceClient {
     required String setupCode,
     required String deviceId,
   }) async {
+    final requestBody = {
+      'setup_code': setupCode,
+      'device_try_to_connect': deviceId,
+    };
+    print('[OdooFaceAttendanceClient] setupScanner Request: ${jsonEncode(requestBody)}');
+
     final payload = await _post(
       '/face_attendance/scanner/setup',
-      {
-        'setup_code': setupCode,
-        'device_id': deviceId,
-      },
+      requestBody,
       authenticated: false,
       extraDb: db,
     );
+
+    print('[OdooFaceAttendanceClient] setupScanner Response: ${jsonEncode(payload)}');
+
     final device = payload['device'] as Map<String, dynamic>;
+    final generatedDeviceId = payload['generated_device_id'] as String?;
     return MobileSession(
       baseUrl: baseUrl,
       db: db,
       token: payload['token'] as String,
       deviceId: device['device_uid'] as String? ?? deviceId,
       deviceName: device['name'] as String? ?? 'Shared Scanner',
+      generatedDeviceId: generatedDeviceId,
     );
   }
 

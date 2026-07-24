@@ -1,6 +1,4 @@
-import 'dart:io';
 import 'dart:math' as math;
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 
 import 'src/api/odoo_face_attendance_client.dart';
@@ -9,32 +7,82 @@ import 'src/screens/attendance_screen.dart';
 import 'src/screens/login_screen.dart';
 import 'src/screens/settings_screen.dart';
 import 'src/screens/local_log_screen.dart';
-import 'src/services/device_service.dart';
 import 'src/services/local_log_service.dart';
 import 'src/services/secure_session_store.dart';
 import 'src/theme/app_theme.dart';
 
-void main() async {
+import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import 'src/api/odoo_face_attendance_client.dart';
+import 'src/models/session.dart';
+import 'src/screens/attendance_screen.dart';
+import 'src/screens/local_log_screen.dart';
+import 'src/screens/login_screen.dart';
+import 'src/screens/settings_screen.dart';
+import 'src/services/local_log_service.dart';
+import 'src/services/secure_session_store.dart';
+import 'src/theme/app_theme.dart';
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ================================
+  // PRINT ALL FLUTTER SECURE STORAGE
+  // ================================
+  const storage = FlutterSecureStorage();
+
   try {
-    final device = await DeviceService().identity();
-    debugPrint('\n=========================================');
-    debugPrint('DEVICE ID: ${device.id}');
-    debugPrint('DEVICE NAME: ${device.name}');
-    if (Platform.isAndroid) {
-      DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
-      AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
-      debugPrint('Android Model: ${androidInfo.model}');
-    } else if (Platform.isIOS) {
-      DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
-      IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
-      debugPrint('iOS Machine: ${iosInfo.utsname.machine}');
+    final allData = await storage.readAll();
+
+    debugPrint("");
+    debugPrint("==========================================");
+    debugPrint("      FLUTTER SECURE STORAGE DATA");
+    debugPrint("==========================================");
+
+    if (allData.isEmpty) {
+      debugPrint("Secure Storage is EMPTY");
+    } else {
+      allData.forEach((key, value) {
+        debugPrint("$key : $value");
+      });
     }
 
-    debugPrint('=========================================\n');
+    debugPrint("==========================================");
+    debugPrint("");
   } catch (e) {
-    debugPrint('Failed to print device ID at launch: $e');
+    debugPrint("Error reading secure storage: $e");
   }
+
+  // ================================
+  // PRINT PARSED SESSION
+  // ================================
+  try {
+    final session = await SecureSessionStore().read();
+
+    debugPrint("");
+    debugPrint("==========================================");
+    debugPrint("          RESTORED SESSION");
+    debugPrint("==========================================");
+
+    if (session == null) {
+      debugPrint("No session found.");
+    } else {
+      debugPrint("Base URL           : ${session.baseUrl}");
+      debugPrint("Database           : ${session.db}");
+      debugPrint("Token              : ${session.token}");
+      debugPrint("Device ID          : ${session.deviceId}");
+      debugPrint("Device Name        : ${session.deviceName}");
+      debugPrint("Generated Device ID: ${session.generatedDeviceId}");
+      
+    }
+
+    debugPrint("==========================================");
+    debugPrint("");
+  } catch (e) {
+    debugPrint("Error reading session: $e");
+  }
+
   runApp(const FaceAttendApp());
 }
 
@@ -169,8 +217,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       duration: const Duration(seconds: 40),
     )..repeat();
 
-    // Auto-sync offline logs in background on launch
-    LocalLogService.instance.syncPendingLogs(_client);
+    // Auto-sync offline logs on launch, connectivity changes, and periodic retry.
+    LocalLogService.instance.startAutoSync(_client);
 
     if (widget.justLoggedIn) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -181,12 +229,13 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    LocalLogService.instance.stopAutoSync();
     _bgController.dispose();
     super.dispose();
   }
 
   void _refresh() {
-    LocalLogService.instance.syncPendingLogs(_client).then((syncedCount) {
+    LocalLogService.instance.syncNow(_client).then((syncedCount) {
       if (syncedCount > 0 && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -214,12 +263,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         return const SizedBox.shrink();
       },
       transitionBuilder: (context, anim1, anim2, child) {
-        final scale = Tween<double>(begin: 0.85, end: 1.0).animate(
-          CurvedAnimation(parent: anim1, curve: Curves.easeOutBack),
-        );
-        final opacity = Tween<double>(begin: 0.0, end: 1.0).animate(
-          CurvedAnimation(parent: anim1, curve: Curves.easeOut),
-        );
+        final scale = Tween<double>(
+          begin: 0.85,
+          end: 1.0,
+        ).animate(CurvedAnimation(parent: anim1, curve: Curves.easeOutBack));
+        final opacity = Tween<double>(
+          begin: 0.0,
+          end: 1.0,
+        ).animate(CurvedAnimation(parent: anim1, curve: Curves.easeOut));
 
         return ScaleTransition(
           scale: scale,
@@ -310,7 +361,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
-                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
                                 elevation: 0,
                               ),
                               child: const Text(
@@ -349,7 +402,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             : FaceAttendColors.surfaceMuted,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: isHighlight ? FaceAttendColors.success : FaceAttendColors.border,
+          color: isHighlight
+              ? FaceAttendColors.success
+              : FaceAttendColors.border,
           width: isHighlight ? 1.0 : 0.8,
         ),
       ),
@@ -357,7 +412,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         children: [
           Icon(
             icon,
-            color: isHighlight ? FaceAttendColors.success : FaceAttendColors.accent,
+            color: isHighlight
+                ? FaceAttendColors.success
+                : FaceAttendColors.accent,
             size: 20,
           ),
           const SizedBox(width: 12),
@@ -371,7 +428,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     fontSize: 9,
                     fontWeight: FontWeight.bold,
                     letterSpacing: 0.8,
-                    color: isHighlight ? FaceAttendColors.success : FaceAttendColors.muted,
+                    color: isHighlight
+                        ? FaceAttendColors.success
+                        : FaceAttendColors.muted,
                   ),
                 ),
                 const SizedBox(height: 2),

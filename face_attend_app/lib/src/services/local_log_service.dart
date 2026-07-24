@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import '../api/odoo_face_attendance_client.dart';
@@ -24,7 +26,9 @@ class LocalPunchLog {
   factory LocalPunchLog.fromJson(Map<String, dynamic> json) {
     return LocalPunchLog(
       id: json['id'] as String? ?? '',
-      timestamp: DateTime.tryParse(json['timestamp'] as String? ?? '') ?? DateTime.now(),
+      timestamp:
+          DateTime.tryParse(json['timestamp'] as String? ?? '') ??
+          DateTime.now(),
       payload: Map<String, dynamic>.from(json['payload'] as Map? ?? {}),
       employeeName: json['employeeName'] as String? ?? 'Unknown Employee',
       isSynced: json['isSynced'] as bool? ?? false,
@@ -51,9 +55,35 @@ class LocalLogService {
 
   List<LocalPunchLog>? _cache;
 
+  // ---- Auto-sync state ----
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  Timer? _syncTimer;
+  OdooFaceAttendanceClient? _syncClient;
+  bool _isSyncing = false;
+
   Future<File> _getLogFile() async {
     final directory = await getApplicationDocumentsDirectory();
-    return File('${directory.path}/$_fileName');
+
+    debugPrint("========================================");
+    debugPrint("Documents Directory: ${directory.path}");
+
+    final file = File('${directory.path}/face_attend_punch_logs.json');
+
+    debugPrint("Log File Path: ${file.path}");
+
+    final exists = await file.exists();
+    debugPrint("File Exists: $exists");
+
+    if (exists) {
+      final content = await file.readAsString();
+      debugPrint("========== LOCAL LOG FILE CONTENT ==========");
+      debugPrint(content);
+      debugPrint("===========================================");
+    } else {
+      debugPrint("Local log file does not exist yet.");
+    }
+
+    return file;
   }
 
   DateTime _getCutoffDate(DateTime now) {
@@ -80,10 +110,18 @@ class LocalLogService {
     final logs = await getLogs();
     final cutoff = _getCutoffDate(DateTime.now());
     final originalLength = logs.length;
-    final pruned = logs.where((log) => log.timestamp.isAfter(cutoff) || log.timestamp.isAtSameMomentAs(cutoff)).toList();
+    final pruned = logs
+        .where(
+          (log) =>
+              log.timestamp.isAfter(cutoff) ||
+              log.timestamp.isAtSameMomentAs(cutoff),
+        )
+        .toList();
     if (pruned.length < originalLength) {
       await saveLogs(pruned);
-      debugPrint('Pruned ${originalLength - pruned.length} old logs at ${DateTime.now()}');
+      debugPrint(
+        'Pruned ${originalLength - pruned.length} old logs at ${DateTime.now()}',
+      );
     }
   }
 
@@ -108,7 +146,13 @@ class LocalLogService {
       // Prune logs older than our cutoff
       final cutoff = _getCutoffDate(DateTime.now());
       final originalLength = _cache!.length;
-      _cache = _cache!.where((log) => log.timestamp.isAfter(cutoff) || log.timestamp.isAtSameMomentAs(cutoff)).toList();
+      _cache = _cache!
+          .where(
+            (log) =>
+                log.timestamp.isAfter(cutoff) ||
+                log.timestamp.isAtSameMomentAs(cutoff),
+          )
+          .toList();
 
       if (_cache!.length < originalLength) {
         saveLogs(_cache!);
@@ -129,7 +173,13 @@ class LocalLogService {
 
       // Prune logs older than our cutoff
       final cutoff = _getCutoffDate(DateTime.now());
-      _cache = _cache!.where((log) => log.timestamp.isAfter(cutoff) || log.timestamp.isAtSameMomentAs(cutoff)).toList();
+      _cache = _cache!
+          .where(
+            (log) =>
+                log.timestamp.isAfter(cutoff) ||
+                log.timestamp.isAtSameMomentAs(cutoff),
+          )
+          .toList();
 
       // Limit list size to avoid infinite storage growth
       if (_cache!.length > _maxLogCount) {
@@ -165,7 +215,11 @@ class LocalLogService {
     await saveLogs(logs);
   }
 
-  Future<void> updateLogSyncStatus(String id, {required bool isSynced, String? syncError}) async {
+  Future<void> updateLogSyncStatus(
+    String id, {
+    required bool isSynced,
+    String? syncError,
+  }) async {
     final logs = await getLogs();
     final index = logs.indexWhere((log) => log.id == id);
     if (index != -1) {
@@ -175,22 +229,93 @@ class LocalLogService {
     }
   }
 
+  String _backendTimestamp(DateTime timestamp) {
+    return timestamp.toUtc().toIso8601String();
+  }
+
+  Map<String, dynamic> _fullLogData(
+    LocalPunchLog log,
+    String backendTimestamp,
+  ) {
+    return {
+      'local_log_id': log.id,
+      'local_timestamp': log.timestamp.toIso8601String(),
+      'backend_timestamp': backendTimestamp,
+      'employee_name': log.employeeName,
+      'is_synced': log.isSynced,
+      'sync_error': log.syncError,
+      'payload': log.payload,
+    };
+  }
+
+  @visibleForTesting
+  String backendTimestampForTesting(DateTime timestamp) {
+    return _backendTimestamp(timestamp);
+  }
+
   Future<int> syncPendingLogs(OdooFaceAttendanceClient client) async {
     final logs = await getLogs();
-    final pending = logs.where((log) => !log.isSynced).toList();
+
+    final pending = logs.where((log) => !log.isSynced).toList()
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    // ============================================================
+    // PRINT ALL PENDING (NOT SYNCED) LOGS
+    // ============================================================
+    debugPrint("");
+    debugPrint("=======================================================");
+    debugPrint("           PENDING (NOT SYNCED) LOGS");
+    debugPrint("=======================================================");
+    debugPrint("Total Pending Logs : ${pending.length}");
+
     if (pending.isEmpty) {
+      debugPrint("No pending logs found.");
+      debugPrint("=======================================================");
       return 0;
     }
 
+    for (int i = 0; i < pending.length; i++) {
+      final log = pending[i];
+
+      debugPrint("");
+      debugPrint(
+        "--------------- Pending Log ${i + 1}/${pending.length} ---------------",
+      );
+      debugPrint("Local Log ID : ${log.id}");
+      debugPrint("Employee     : ${log.employeeName}");
+      debugPrint("Timestamp    : ${log.timestamp.toIso8601String()}");
+      debugPrint("Is Synced    : ${log.isSynced}");
+      debugPrint("Sync Error   : ${log.syncError ?? 'None'}");
+
+      debugPrint("Payload:");
+      debugPrint(const JsonEncoder.withIndent('  ').convert(log.payload));
+
+      debugPrint("-------------------------------------------------------");
+    }
+
+    debugPrint("=======================================================");
+    debugPrint("");
+
+    // ============================================================
+    // START SYNC
+    // ============================================================
+
     int successCount = 0;
     bool needsSave = false;
+
     for (final log in pending) {
       try {
         final p = log.payload;
-        // Inject original timestamp in ISO-8601 format
-        final originalTimestampStr = log.timestamp.toIso8601String();
-        
-        await client.punch(
+
+        // Send UTC so Odoo does not apply the device timezone offset twice.
+        final originalTimestampStr = _backendTimestamp(log.timestamp);
+
+        debugPrint("");
+        debugPrint("SYNCING LOG : ${log.id}");
+        debugPrint("Employee    : ${log.employeeName}");
+        debugPrint("Timestamp   : $originalTimestampStr");
+
+        final result = await client.punch(
           accepted: p['accepted'] as bool? ?? false,
           matchedEmployeeId: p['matched_employee_id'] as int?,
           matchScore: (p['match_score'] as num? ?? 0.0).toDouble(),
@@ -198,44 +323,66 @@ class LocalLogService {
           deviceId: p['device_id'] as String? ?? '',
           appVersion: p['app_version'] as String? ?? '1.0.0',
           failureReason: p['failure_reason'] as String?,
-          secondBestConfidence: p['second_best_confidence'] != null 
-              ? (p['second_best_confidence'] as num).toDouble() 
+          secondBestConfidence: p['second_best_confidence'] != null
+              ? (p['second_best_confidence'] as num).toDouble()
               : null,
           embeddingSource: p['embedding_source'] as String?,
           reviewEmbeddingId: p['review_embedding_id'] as int?,
           needsReview: p['needs_review'] as bool? ?? false,
           livenessPassed: p['liveness_passed'] as bool? ?? false,
-          livenessScore: p['liveness_score'] != null 
-              ? (p['liveness_score'] as num).toDouble() 
+          livenessScore: p['liveness_score'] != null
+              ? (p['liveness_score'] as num).toDouble()
               : null,
-          spoofScore: p['spoof_score'] != null 
-              ? (p['spoof_score'] as num).toDouble() 
+          spoofScore: p['spoof_score'] != null
+              ? (p['spoof_score'] as num).toDouble()
               : null,
           timestamp: originalTimestampStr,
+          fullLogData: _fullLogData(log, originalTimestampStr),
         );
 
         log.isSynced = true;
         log.syncError = null;
+
         successCount++;
         needsSave = true;
+
+        debugPrint("SYNC SUCCESS");
+        debugPrint("Local Log ID   : ${log.id}");
+        debugPrint("Backend Log ID : ${result.logId ?? 'unknown'}");
+        debugPrint("Employee       : ${log.employeeName}");
+        debugPrint("Punch Type     : ${result.punchType ?? 'unknown'}");
+        debugPrint("Timestamp      : $originalTimestampStr");
       } on FaceAttendanceApiException catch (e) {
         log.syncError = e.toString();
-        debugPrint('Failed to sync log ${log.id}: $e');
-        if (e.statusCode == 400 || e.statusCode == 422) {
-          // Permanently invalid payload or database rejection (e.g. stale employee ID).
-          // Mark as synced so we do not attempt to retry this log again.
-          log.isSynced = true;
-          needsSave = true;
-        }
+        needsSave = true;
+
+        debugPrint("SYNC FAILED");
+        debugPrint("Local Log ID : ${log.id}");
+        debugPrint("Employee     : ${log.employeeName}");
+        debugPrint("Reason       : $e");
       } catch (e) {
         log.syncError = e.toString();
-        debugPrint('Failed to sync log ${log.id}: $e');
+        needsSave = true;
+
+        debugPrint("SYNC FAILED");
+        debugPrint("Local Log ID : ${log.id}");
+        debugPrint("Employee     : ${log.employeeName}");
+        debugPrint("Reason       : $e");
       }
     }
 
     if (needsSave) {
       await saveLogs(logs);
     }
+
+    debugPrint("");
+    debugPrint("=======================================================");
+    debugPrint("SYNC COMPLETED");
+    debugPrint("Total Pending : ${pending.length}");
+    debugPrint("Successfully Synced : $successCount");
+    debugPrint("Failed : ${pending.length - successCount}");
+    debugPrint("=======================================================");
+
     return successCount;
   }
 
@@ -248,6 +395,80 @@ class LocalLogService {
       }
     } catch (e) {
       debugPrint('Error deleting local logs: $e');
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Auto-sync: automatically push unsynced logs to the backend whenever
+  // connectivity is available, with a periodic fallback timer.
+  // ---------------------------------------------------------------------
+
+  /// Call once (e.g. right after you build/obtain the authenticated
+  /// [OdooFaceAttendanceClient]) to start automatically pushing unsynced
+  /// logs whenever a connection is available.
+  void startAutoSync(OdooFaceAttendanceClient client) {
+    _syncClient = client;
+
+    _connectivitySub?.cancel();
+    _connectivitySub = Connectivity().onConnectivityChanged.listen((results) {
+      final hasConnection = results.any((r) => r != ConnectivityResult.none);
+      if (hasConnection) {
+        _attemptSync();
+      }
+    });
+
+    // Fallback: retry periodically in case a connectivity event is missed
+    // or the OS reports "connected" but the network isn't actually reachable.
+    _syncTimer?.cancel();
+    _syncTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _attemptSync(),
+    );
+
+    // Try once immediately too (e.g. app just started with a live connection).
+    _attemptSync();
+  }
+
+  /// Call when the client/session is no longer valid (e.g. logout) or when
+  /// the owning widget is disposed, to stop background sync attempts.
+  void stopAutoSync() {
+    _connectivitySub?.cancel();
+    _connectivitySub = null;
+    _syncTimer?.cancel();
+    _syncTimer = null;
+    _syncClient = null;
+  }
+
+  /// Manually trigger a sync attempt right now (e.g. from a "Sync now"
+  /// button in the UI). Safe to call even if auto-sync isn't running,
+  /// as long as you pass a client.
+  Future<int> syncNow(OdooFaceAttendanceClient client) async {
+    if (_isSyncing) return 0;
+    _isSyncing = true;
+    try {
+      return await syncPendingLogs(client);
+    } finally {
+      _isSyncing = false;
+    }
+  }
+
+  Future<void> _attemptSync() async {
+    if (_isSyncing || _syncClient == null) return;
+
+    final logs = await getLogs();
+    final hasPending = logs.any((log) => !log.isSynced);
+    if (!hasPending) return;
+
+    _isSyncing = true;
+    try {
+      final count = await syncPendingLogs(_syncClient!);
+      if (count > 0) {
+        debugPrint('Auto-sync: pushed $count pending log(s) to backend');
+      }
+    } catch (e) {
+      debugPrint('Auto-sync attempt failed: $e');
+    } finally {
+      _isSyncing = false;
     }
   }
 }

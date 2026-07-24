@@ -43,6 +43,11 @@ class _LoginScreenState extends State<LoginScreen>
   Future<void> _loadDeviceId() async {
     try {
       final device = await DeviceService().identity();
+      if (mounted) {
+        setState(() {
+          _deviceId = device.id;
+        });
+      }
       debugPrint('\n=========================================');
       debugPrint('DEVICE ID: ${device.id}');
       debugPrint('DEVICE NAME: ${device.name}');
@@ -76,31 +81,7 @@ class _LoginScreenState extends State<LoginScreen>
     setState(() => _fetchingDb = true);
     try {
       final client = OdooFaceAttendanceClient(baseUrl: _baseUrl.text.trim());
-      List<String> dbs = [];
-      try {
-        final config = await client.getPublicConfig();
-        // Print the public config on the terminal as requested
-        debugPrint('--- public/config response ---');
-        debugPrint(config.toString());
-        debugPrint('------------------------------');
-
-        final listDb = config['list_db'] as bool? ?? true;
-        if (listDb) {
-          dbs = await client.listDatabases();
-        } else {
-          final dbNameVal = config['db_name'];
-          if (dbNameVal is List) {
-            dbs = dbNameVal.map((e) => e.toString()).toList();
-          } else if (dbNameVal is String) {
-            dbs = [dbNameVal];
-          }
-        }
-      } catch (configError) {
-        debugPrint(
-          'Failed to fetch public config, falling back to standard database list: $configError',
-        );
-        dbs = await client.listDatabases();
-      }
+      final dbs = await client.listDatabases();
 
       debugPrint('Databases list retrieved: $dbs');
 
@@ -117,9 +98,10 @@ class _LoginScreenState extends State<LoginScreen>
       }
     } catch (error) {
       if (mounted) {
+        final errorString = error.toString().replaceAll('uri=', 'url=');
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to fetch DBs: $error')));
+        ).showSnackBar(SnackBar(content: Text('Failed to fetch DBs: $errorString')));
       }
     } finally {
       if (mounted) setState(() => _fetchingDb = false);
@@ -146,7 +128,7 @@ class _LoginScreenState extends State<LoginScreen>
       widget.onLoggedIn(session);
     } catch (error) {
       if (!mounted) return;
-      String message = error.toString();
+      String message = error.toString().replaceAll('uri=', 'url=');
       if (message.contains('token_already_registered_to_another_device')) {
         message = 'This setup code is already in use on another device.';
       }

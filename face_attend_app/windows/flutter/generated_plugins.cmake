@@ -3,6 +3,7 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  connectivity_plus
   face_detection_tflite
   flutter_secure_storage_windows
   share_plus

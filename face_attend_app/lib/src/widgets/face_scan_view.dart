@@ -52,7 +52,8 @@ class _FaceScanViewState extends State<FaceScanView>
 
   @override
   Widget build(BuildContext context) {
-    final initialized = widget.camera != null && widget.camera!.value.isInitialized;
+    final initialized =
+        widget.camera != null && widget.camera!.value.isInitialized;
     return Container(
       width: double.infinity,
       color: Colors.black,
@@ -63,7 +64,10 @@ class _FaceScanViewState extends State<FaceScanView>
             _CameraPreviewCover(camera: widget.camera!)
           else
             Center(
-              child: Text(widget.message, style: const TextStyle(color: Colors.white)),
+              child: Text(
+                widget.message,
+                style: const TextStyle(color: Colors.white),
+              ),
             ),
           AnimatedBuilder(
             animation: _scanController,
@@ -72,7 +76,8 @@ class _FaceScanViewState extends State<FaceScanView>
                 faceBounds: widget.faceBounds,
                 faceOverlays: widget.faceOverlays,
                 imageSize: widget.faceImageSize,
-                isFrontCamera: widget.camera?.description.lensDirection ==
+                isFrontCamera:
+                    widget.camera?.description.lensDirection ==
                     CameraLensDirection.front,
                 ready: widget.faceReady,
                 animationValue: _scanController.value,
@@ -151,6 +156,9 @@ class _FaceGuide extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scanColor = theme.primaryColor;
+
     return IgnorePointer(
       child: CustomPaint(
         painter: _FaceGuidePainter(
@@ -160,6 +168,7 @@ class _FaceGuide extends StatelessWidget {
           isFrontCamera: isFrontCamera,
           ready: ready,
           animationValue: animationValue,
+          scanColor: scanColor,
         ),
       ),
     );
@@ -174,6 +183,7 @@ class _FaceGuidePainter extends CustomPainter {
     required this.isFrontCamera,
     required this.ready,
     required this.animationValue,
+    required this.scanColor,
   });
 
   final Rect? faceBounds;
@@ -182,131 +192,81 @@ class _FaceGuidePainter extends CustomPainter {
   final bool isFrontCamera;
   final bool ready;
   final double animationValue;
+  final Color scanColor;
 
   @override
   void paint(Canvas canvas, Size size) {
-    // Fixed large guide box centered in the camera preview
-    final double guideWidth = size.width * 0.72;
-    final double guideHeight = guideWidth * 1.25;
-    final rect = Rect.fromCenter(
-      center: Offset(size.width / 2, size.height * 0.40),
-      width: guideWidth,
-      height: guideHeight,
-    );
+    final bool isFaceDetected = faceBounds != null && imageSize != null;
 
-    final isFaceDetected = faceBounds != null || faceOverlays.isNotEmpty;
-    final Color color;
-    if (ready) {
-      color = const Color(0xFF30D158); // Bright green on success
-    } else if (isFaceDetected) {
-      color = const Color(0xFF30D158).withValues(alpha: 0.85); // High opacity green
-    } else {
-      color = const Color(0xFF30D158).withValues(alpha: 0.45); // Soft green
+    // Do not show the circular guide at the very first before a face is detected
+    if (!isFaceDetected) {
+      return;
     }
 
-    final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(24));
-    
-    // Draw subtle background overlay inside the guide frame
-    final fillPaint = Paint()
-      ..color = color.withValues(alpha: 0.03)
-      ..style = PaintingStyle.fill;
-    canvas.drawRRect(rrect, fillPaint);
+    // Scale factors to map camera image coordinates to preview size coordinates
+    final double scale = math.max(
+      size.width / imageSize!.width,
+      size.height / imageSize!.height,
+    );
+    final double offsetX = (size.width - imageSize!.width * scale) / 2;
+    final double offsetY = (size.height - imageSize!.height * scale) / 2;
 
-    // Draw thin border
+    double left = faceBounds!.left * scale + offsetX;
+    double right = faceBounds!.right * scale + offsetX;
+
+    if (isFrontCamera) {
+      // Horizontally mirror the X coordinates for front camera
+      final double mirroredLeft = size.width - right;
+      final double mirroredRight = size.width - left;
+      left = mirroredLeft;
+      right = mirroredRight;
+    }
+
+    final double top = faceBounds!.top * scale + offsetY;
+    final double bottom = faceBounds!.bottom * scale + offsetY;
+
+    final Rect faceRect = Rect.fromLTRB(left, top, right, bottom);
+
+    // Clamp values to ensure circle stays beautifully on screen
+    final double calculatedRadius =
+        math.max(faceRect.width, faceRect.height) * 0.65;
+    final double radius = calculatedRadius.clamp(
+      size.width * 0.20,
+      size.width * 0.45,
+    );
+
+    final Offset center = Offset(
+      faceRect.center.dx.clamp(radius + 10, size.width - radius - 10),
+      faceRect.center.dy.clamp(radius + 10, size.height - radius - 10),
+    );
+
+    final Color color = ready ? const Color(0xFF30D158) : scanColor;
+
+    //final cutoutPath = Path()..addOval(Rect.fromCircle(center: center, radius: radius));
+
+    // Draw thin circular border
     final borderPaint = Paint()
-      ..color = color.withValues(alpha: 0.25)
+      ..color = color.withValues(alpha: 0.9)
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
-    canvas.drawRRect(rrect, borderPaint);
-
-    // Draw bold corner brackets
-    final cornerPaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 4.0
-      ..strokeCap = StrokeCap.round;
-
-    final double len = 24.0;
-    
-    // Top-Left corner
-    canvas.drawPath(
-      Path()
-        ..moveTo(rect.left, rect.top + len)
-        ..lineTo(rect.left, rect.top)
-        ..lineTo(rect.left + len, rect.top),
-      cornerPaint,
-    );
-    
-    // Top-Right corner
-    canvas.drawPath(
-      Path()
-        ..moveTo(rect.right - len, rect.top)
-        ..lineTo(rect.right, rect.top)
-        ..lineTo(rect.right, rect.top + len),
-      cornerPaint,
-    );
-    
-    // Bottom-Left corner
-    canvas.drawPath(
-      Path()
-        ..moveTo(rect.left, rect.bottom - len)
-        ..lineTo(rect.left, rect.bottom)
-        ..lineTo(rect.left + len, rect.bottom),
-      cornerPaint,
-    );
-
-    // Bottom-Right corner
-    canvas.drawPath(
-      Path()
-        ..moveTo(rect.right - len, rect.bottom)
-        ..lineTo(rect.right, rect.bottom)
-        ..lineTo(rect.right, rect.bottom - len),
-      cornerPaint,
-    );
-
-    // Sweeping scan line covering the full image box
-    final double scanLineY = size.height * animationValue;
-    
-    // Sweeping gradient glow (full width)
-    final double glowHeight = 35.0;
-    final sweepGlowPaint = Paint()
-      ..shader = LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [
-          color.withValues(alpha: 0.0),
-          color.withValues(alpha: 0.25),
-          color.withValues(alpha: 0.0),
-        ],
-      ).createShader(
-        Rect.fromLTRB(0, scanLineY - glowHeight, size.width, scanLineY + glowHeight),
-      );
-    
-    canvas.drawRect(
-      Rect.fromLTRB(0, scanLineY - glowHeight, size.width, scanLineY + glowHeight),
-      sweepGlowPaint,
-    );
-
-    // Bright core laser line (full width)
-    final laserPaint = Paint()
-      ..color = color
-      ..strokeWidth = 3.0
-      ..strokeCap = StrokeCap.round;
-
-    canvas.drawLine(
-      Offset(0, scanLineY),
-      Offset(size.width, scanLineY),
-      laserPaint,
-    );
+      ..strokeWidth = 3.0;
+    canvas.drawCircle(center, radius, borderPaint);
 
     // Draw label
-    final String labelText = ready 
-        ? "MATCHED" 
-        : (isFaceDetected ? "SCANNING..." : "ALIGN FACE");
-    _drawLabel(canvas, rect, labelText, color);
+    final String labelText = ready
+        ? "MATCHED"
+        : (isFaceDetected || faceOverlays.isNotEmpty
+              ? "SCANNING..."
+              : "ALIGN FACE");
+    _drawLabel(canvas, center, radius, labelText, color);
   }
 
-  void _drawLabel(Canvas canvas, Rect rect, String label, Color color) {
+  void _drawLabel(
+    Canvas canvas,
+    Offset center,
+    double radius,
+    String label,
+    Color color,
+  ) {
     final textPainter = TextPainter(
       text: TextSpan(
         text: label,
@@ -320,11 +280,11 @@ class _FaceGuidePainter extends CustomPainter {
       maxLines: 1,
       ellipsis: '...',
     )..layout(maxWidth: 180);
-    
+
     final labelRect = RRect.fromRectAndRadius(
       Rect.fromLTWH(
-        rect.left + (rect.width - textPainter.width - 18) / 2, // Centered label
-        math.max(8, rect.top - textPainter.height - 12),
+        center.dx - (textPainter.width + 18) / 2, // Centered label
+        math.max(8, center.dy - radius - textPainter.height - 18),
         textPainter.width + 18,
         textPainter.height + 10,
       ),
@@ -342,7 +302,8 @@ class _FaceGuidePainter extends CustomPainter {
       oldDelegate.imageSize != imageSize ||
       oldDelegate.isFrontCamera != isFrontCamera ||
       oldDelegate.ready != ready ||
-      oldDelegate.animationValue != animationValue;
+      oldDelegate.animationValue != animationValue ||
+      oldDelegate.scanColor != scanColor;
 }
 
 class FaceOverlay {

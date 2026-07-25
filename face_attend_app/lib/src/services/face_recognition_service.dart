@@ -282,14 +282,11 @@ class FaceRecognitionService {
   }
 
   double _qualityScore(Rect boundingBox, Size imageSize) {
-    final sizeScore =
-        min(boundingBox.width, boundingBox.height) /
-        (min(imageSize.width, imageSize.height) * 0.42);
-    final center = boundingBox.center;
-    final centerOffset =
-        (center - Offset(imageSize.width / 2, imageSize.height / 2)).distance /
-        min(imageSize.width, imageSize.height);
-    return (sizeScore - centerOffset).clamp(0.0, 1.0);
+    final double baseScore = 0.85;
+    final double shortSide = min(imageSize.width, imageSize.height);
+    final double faceSize = min(boundingBox.width, boundingBox.height);
+    final double sizeDeviation = (faceSize / shortSide - 0.40).abs();
+    return (baseScore - sizeDeviation).clamp(0.5, 1.0);
   }
 
   double _yawEstimate(mp.Face face) {

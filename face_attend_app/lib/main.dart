@@ -11,7 +11,78 @@ import 'src/services/local_log_service.dart';
 import 'src/services/secure_session_store.dart';
 import 'src/theme/app_theme.dart';
 
-void main() {
+import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import 'src/api/odoo_face_attendance_client.dart';
+import 'src/models/session.dart';
+import 'src/screens/attendance_screen.dart';
+import 'src/screens/local_log_screen.dart';
+import 'src/screens/login_screen.dart';
+import 'src/screens/settings_screen.dart';
+import 'src/services/local_log_service.dart';
+import 'src/services/secure_session_store.dart';
+import 'src/theme/app_theme.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  // ================================
+  // PRINT ALL FLUTTER SECURE STORAGE
+  // ================================
+  const storage = FlutterSecureStorage();
+
+  try {
+    final allData = await storage.readAll();
+
+    debugPrint("");
+    debugPrint("==========================================");
+    debugPrint("      FLUTTER SECURE STORAGE DATA");
+    debugPrint("==========================================");
+
+    if (allData.isEmpty) {
+      debugPrint("Secure Storage is EMPTY");
+    } else {
+      allData.forEach((key, value) {
+        debugPrint("$key : $value");
+      });
+    }
+
+    debugPrint("==========================================");
+    debugPrint("");
+  } catch (e) {
+    debugPrint("Error reading secure storage: $e");
+  }
+
+  // ================================
+  // PRINT PARSED SESSION
+  // ================================
+  try {
+    final session = await SecureSessionStore().read();
+
+    debugPrint("");
+    debugPrint("==========================================");
+    debugPrint("          RESTORED SESSION");
+    debugPrint("==========================================");
+
+    if (session == null) {
+      debugPrint("No session found.");
+    } else {
+      debugPrint("Base URL           : ${session.baseUrl}");
+      debugPrint("Database           : ${session.db}");
+      debugPrint("Token              : ${session.token}");
+      debugPrint("Device ID          : ${session.deviceId}");
+      debugPrint("Device Name        : ${session.deviceName}");
+      debugPrint("Generated Device ID: ${session.generatedDeviceId}");
+      
+    }
+
+    debugPrint("==========================================");
+    debugPrint("");
+  } catch (e) {
+    debugPrint("Error reading session: $e");
+  }
+
   runApp(const FaceAttendApp());
 }
 
@@ -26,6 +97,7 @@ class _FaceAttendAppState extends State<FaceAttendApp> {
   final _sessionStore = SecureSessionStore();
   MobileSession? _session;
   bool _loading = true;
+  bool _justLoggedIn = false;
 
   @override
   void initState() {
@@ -39,19 +111,26 @@ class _FaceAttendAppState extends State<FaceAttendApp> {
     setState(() {
       _session = restored;
       _loading = false;
+      _justLoggedIn = false;
     });
   }
 
   Future<void> _setSession(MobileSession session) async {
     await _sessionStore.write(session);
     if (!mounted) return;
-    setState(() => _session = session);
+    setState(() {
+      _session = session;
+      _justLoggedIn = true;
+    });
   }
 
   Future<void> _logout() async {
     await _sessionStore.clear();
     if (!mounted) return;
-    setState(() => _session = null);
+    setState(() {
+      _session = null;
+      _justLoggedIn = false;
+    });
   }
 
   @override
@@ -64,7 +143,11 @@ class _FaceAttendAppState extends State<FaceAttendApp> {
           ? const _LoadingScreen()
           : _session == null
           ? LoginScreen(onLoggedIn: _setSession)
-          : HomeScreen(session: _session!, onLogout: _logout),
+          : HomeScreen(
+              session: _session!,
+              onLogout: _logout,
+              justLoggedIn: _justLoggedIn,
+            ),
     );
   }
 }
@@ -99,10 +182,16 @@ class _ScaleOnPressState extends State<ScaleOnPress> {
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({required this.session, required this.onLogout, super.key});
+  const HomeScreen({
+    required this.session,
+    required this.onLogout,
+    this.justLoggedIn = false,
+    super.key,
+  });
 
   final MobileSession session;
   final VoidCallback onLogout;
+  final bool justLoggedIn;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -120,6 +209,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       baseUrl: widget.session.baseUrl,
       db: widget.session.db,
       token: widget.session.token,
+      deviceId: widget.session.deviceId,
     );
     _statusFuture = _client.status();
     _bgController = AnimationController(
@@ -127,18 +217,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       duration: const Duration(seconds: 40),
     )..repeat();
 
-    // Auto-sync offline logs in background on launch
-    LocalLogService.instance.syncPendingLogs(_client);
+    // Auto-sync offline logs on launch, connectivity changes, and periodic retry.
+    LocalLogService.instance.startAutoSync(_client);
+
+    if (widget.justLoggedIn) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showSetupSuccessPopup();
+      });
+    }
   }
 
   @override
   void dispose() {
+    LocalLogService.instance.stopAutoSync();
     _bgController.dispose();
     super.dispose();
   }
 
   void _refresh() {
-    LocalLogService.instance.syncPendingLogs(_client).then((syncedCount) {
+    LocalLogService.instance.syncNow(_client).then((syncedCount) {
       if (syncedCount > 0 && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -153,6 +250,204 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     setState(() {
       _statusFuture = _client.status();
     });
+  }
+
+  void _showSetupSuccessPopup() {
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: true,
+      barrierLabel: 'Dismiss',
+      barrierColor: Colors.black.withOpacity(0.6),
+      transitionDuration: const Duration(milliseconds: 400),
+      pageBuilder: (context, anim1, anim2) {
+        return const SizedBox.shrink();
+      },
+      transitionBuilder: (context, anim1, anim2, child) {
+        final scale = Tween<double>(
+          begin: 0.85,
+          end: 1.0,
+        ).animate(CurvedAnimation(parent: anim1, curve: Curves.easeOutBack));
+        final opacity = Tween<double>(
+          begin: 0.0,
+          end: 1.0,
+        ).animate(CurvedAnimation(parent: anim1, curve: Curves.easeOut));
+
+        return ScaleTransition(
+          scale: scale,
+          child: FadeTransition(
+            opacity: opacity,
+            child: AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              backgroundColor: FaceAttendColors.surface,
+              contentPadding: EdgeInsets.zero,
+              content: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: SizedBox(
+                  width: 380,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        decoration: const BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Color(0xFF22C55E), Color(0xFF16A34A)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.white24,
+                              ),
+                              child: const Icon(
+                                Icons.check_circle_outline,
+                                color: Colors.white,
+                                size: 48,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            const Text(
+                              'Scanner Connected!',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text(
+                              'The shared biometric scanner setup was successful. Please record the credentials below.',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: FaceAttendColors.muted,
+                                height: 1.4,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 20),
+                            _buildPopupDetailTile(
+                              icon: Icons.devices,
+                              label: 'DEVICE NAME',
+                              value: widget.session.deviceName,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildPopupDetailTile(
+                              icon: Icons.fingerprint,
+                              label: 'GENERATED DEVICE ID',
+                              value: widget.session.generatedDeviceId ?? 'N/A',
+                              isHighlight: true,
+                            ),
+                            const SizedBox(height: 24),
+                            ElevatedButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: FaceAttendColors.ink,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
+                                ),
+                                elevation: 0,
+                              ),
+                              child: const Text(
+                                'Done',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildPopupDetailTile({
+    required IconData icon,
+    required String label,
+    required String value,
+    bool isHighlight = false,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isHighlight
+            ? FaceAttendColors.successSoft.withOpacity(0.3)
+            : FaceAttendColors.surfaceMuted,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isHighlight
+              ? FaceAttendColors.success
+              : FaceAttendColors.border,
+          width: isHighlight ? 1.0 : 0.8,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            color: isHighlight
+                ? FaceAttendColors.success
+                : FaceAttendColors.accent,
+            size: 20,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.bold,
+                    letterSpacing: 0.8,
+                    color: isHighlight
+                        ? FaceAttendColors.success
+                        : FaceAttendColors.muted,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                SelectableText(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: FaceAttendColors.ink,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

@@ -79,7 +79,7 @@ class FaceAttendanceDevice(models.Model):
         index=True,
     )
     employee_id = fields.Many2one("hr.employee", index=True, ondelete="cascade")
-    device_uid = fields.Char(required=True, index=True)
+    device_uid = fields.Char(index=True)
     token = fields.Char(required=True, index=True, copy=False, default=_default_token)
     setup_code = fields.Char(string="Scanner Setup Code", compute="_compute_setup_code")
     token_expires_at = fields.Datetime(required=True, default=_default_token_expires_at)
@@ -91,11 +91,14 @@ class FaceAttendanceDevice(models.Model):
         ("employee_device_unique", "unique(employee_id, device_uid)", "This device is already registered for the employee."),
     ]
 
-    @api.constrains("device_type", "employee_id")
+    @api.constrains("device_type", "employee_id", "device_uid")
     def _check_employee_device(self):
         for record in self:
-            if record.device_type == "employee" and not record.employee_id:
-                raise UserError(_("Employee devices must be linked to an employee."))
+            if record.device_type == "employee":
+                if not record.employee_id:
+                    raise UserError(_("Employee devices must be linked to an employee."))
+                if not record.device_uid:
+                    raise UserError(_("Employee devices must have a Device UID."))
 
     def action_generate_token(self):
         for record in self:

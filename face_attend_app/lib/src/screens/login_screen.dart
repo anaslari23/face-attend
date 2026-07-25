@@ -1,9 +1,12 @@
+import 'dart:io';
 import 'dart:math' as math;
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:face_attend_app/main.dart';
 
 import '../api/odoo_face_attendance_client.dart';
 import '../models/session.dart';
+import '../services/device_service.dart';
 import '../theme/app_theme.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -25,6 +28,7 @@ class _LoginScreenState extends State<LoginScreen>
   bool _fetchingDb = false;
   List<String>? _availableDbs;
   late final AnimationController _meshController;
+  String? _deviceId;
 
   @override
   void initState() {
@@ -33,6 +37,34 @@ class _LoginScreenState extends State<LoginScreen>
       vsync: this,
       duration: const Duration(seconds: 8),
     )..repeat();
+    _loadDeviceId();
+  }
+
+  Future<void> _loadDeviceId() async {
+    try {
+      final device = await DeviceService().identity();
+      if (mounted) {
+        setState(() {
+          _deviceId = device.id;
+        });
+      }
+      debugPrint('\n=========================================');
+      debugPrint('DEVICE ID: ${device.id}');
+      debugPrint('DEVICE NAME: ${device.name}');
+      if (Platform.isAndroid) {
+        DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+        AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
+        debugPrint('Android Model: ${androidInfo.model}');
+      } else if (Platform.isIOS) {
+        DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
+        IosDeviceInfo iosInfo = await deviceInfo.iosInfo;
+        debugPrint('iOS Machine: ${iosInfo.utsname.machine}');
+      }
+
+      debugPrint('=========================================\n');
+    } catch (e) {
+      debugPrint('Failed to print device ID at launch: $e');
+    }
   }
 
   @override
@@ -50,6 +82,9 @@ class _LoginScreenState extends State<LoginScreen>
     try {
       final client = OdooFaceAttendanceClient(baseUrl: _baseUrl.text.trim());
       final dbs = await client.listDatabases();
+
+      debugPrint('Databases list retrieved: $dbs');
+
       setState(() {
         _availableDbs = dbs;
         if (dbs.isNotEmpty && !_availableDbs!.contains(_db.text)) {
@@ -63,9 +98,10 @@ class _LoginScreenState extends State<LoginScreen>
       }
     } catch (error) {
       if (mounted) {
+        final errorString = error.toString().replaceAll('uri=', 'url=');
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to fetch DBs: $error')));
+        ).showSnackBar(SnackBar(content: Text('Failed to fetch DBs: $errorString')));
       }
     } finally {
       if (mounted) setState(() => _fetchingDb = false);
@@ -76,22 +112,29 @@ class _LoginScreenState extends State<LoginScreen>
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
     try {
+      final deviceIdentity = await DeviceService().identity();
       final client = OdooFaceAttendanceClient(baseUrl: _baseUrl.text.trim());
       final session = await client.setupScanner(
         db: _db.text.trim(),
         setupCode: _setupCode.text.trim(),
+        deviceId: deviceIdentity.id,
       );
       await OdooFaceAttendanceClient(
         baseUrl: session.baseUrl,
         db: session.db,
         token: session.token,
+        deviceId: session.deviceId,
       ).status();
       widget.onLoggedIn(session);
     } catch (error) {
       if (!mounted) return;
+      String message = error.toString().replaceAll('uri=', 'url=');
+      if (message.contains('token_already_registered_to_another_device')) {
+        message = 'This setup code is already in use on another device.';
+      }
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text(error.toString())));
+      ).showSnackBar(SnackBar(content: Text(message)));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -134,7 +177,7 @@ class _LoginScreenState extends State<LoginScreen>
                   const AnimatedEntrance(
                     delay: Duration(milliseconds: 100),
                     child: Text(
-                      'FaceAttend',
+                      'PISmartPunch',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: 36,
@@ -312,44 +355,77 @@ class _LoginScreenState extends State<LoginScreen>
                           shadowColor: FaceAttendColors.accent,
                         ),
                         padding: const EdgeInsets.all(16),
-                        child: Row(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: FaceAttendColors.accentSoft,
-                              ),
-                              child: const Icon(
-                                Icons.info_outline,
-                                color: FaceAttendColors.accent,
-                                size: 20,
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            const Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Setup Instructions',
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: FaceAttendColors.ink,
-                                    ),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: const BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: FaceAttendColors.accentSoft,
                                   ),
-                                  SizedBox(height: 2),
-                                  Text(
-                                    'Point the app to your Odoo server and enter the scanner setup code from the backend. Face matching runs on this phone.',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: FaceAttendColors.muted,
+                                  child: const Icon(
+                                    Icons.info_outline,
+                                    color: FaceAttendColors.accent,
+                                    size: 20,
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Setup Instructions',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: FaceAttendColors.ink,
+                                        ),
+                                      ),
+                                      SizedBox(height: 2),
+                                      Text(
+                                        'Point the app to your Odoo server and enter the scanner setup code from the backend. Face matching runs on this phone.',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: FaceAttendColors.muted,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            if (_deviceId != null) ...[
+                              const Divider(
+                                height: 24,
+                                thickness: 0.8,
+                                color: FaceAttendColors.border,
+                              ),
+                              Row(
+                                children: [
+                                  const Icon(
+                                    Icons.fingerprint,
+                                    color: FaceAttendColors.accent,
+                                    size: 20,
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: SelectableText(
+                                      'Device Identity ID:\n$_deviceId',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w700,
+                                        color: FaceAttendColors.ink,
+                                      ),
                                     ),
                                   ),
                                 ],
                               ),
-                            ),
+                            ],
                           ],
                         ),
                       ),

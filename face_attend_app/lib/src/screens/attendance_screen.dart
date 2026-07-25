@@ -70,6 +70,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       baseUrl: widget.session.baseUrl,
       db: widget.session.db,
       token: widget.session.token,
+      deviceId: widget.session.deviceId,
     );
     _matcher = OnDeviceFaceMatcher(client: _client, faceService: _faceService);
     _init();
@@ -122,7 +123,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _message = error.toString();
+        _message = error.toString().replaceAll('uri=', 'url=');
         _scannerState = _ScannerState.failed;
       });
     }
@@ -207,7 +208,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _message = error.toString();
+        _message = error.toString().replaceAll('uri=', 'url=');
         _scannerState = _ScannerState.failed;
       });
     } finally {
@@ -255,7 +256,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         await _deleteImageQuietly(imagePath);
       }
       if (!mounted) return;
-      _pauseAfterScan(error.toString());
+      _pauseAfterScan(error.toString().replaceAll('uri=', 'url='));
     }
   }
 
@@ -288,8 +289,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         'app_version': appVersion,
         'failure_reason': accepted
             ? inCooldown
-                ? 'cooldown'
-                : null
+                  ? 'cooldown'
+                  : null
             : liveAccepted
             ? match.reason ?? 'below_threshold'
             : 'liveness_failed',
@@ -303,7 +304,19 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
       final now = DateTime.now();
       final employeeName = match.employeeName ?? 'Unknown Employee';
-      final logId = 'log_${now.millisecondsSinceEpoch}_${match.employeeId ?? 0}';
+      final logId =
+          'log_${now.millisecondsSinceEpoch}_${match.employeeId ?? 0}';
+
+      final backendTimestamp = now.toUtc().toIso8601String();
+      final fullLogData = {
+        'local_log_id': logId,
+        'local_timestamp': now.toIso8601String(),
+        'backend_timestamp': backendTimestamp,
+        'employee_name': employeeName,
+        'is_synced': false,
+        'sync_error': null,
+        'payload': payload,
+      };
 
       // 1. Add log locally as unsynced
       await LocalLogService.instance.addLog(
@@ -324,19 +337,24 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           deviceId: payload['device_id'] as String,
           appVersion: payload['app_version'] as String,
           failureReason: payload['failure_reason'] as String?,
-          secondBestConfidence: payload['second_best_confidence'] != null 
-              ? (payload['second_best_confidence'] as num).toDouble() 
+          secondBestConfidence: payload['second_best_confidence'] != null
+              ? (payload['second_best_confidence'] as num).toDouble()
               : null,
           embeddingSource: payload['embedding_source'] as String?,
           needsReview: payload['needs_review'] as bool,
           livenessPassed: payload['liveness_passed'] as bool,
-          livenessScore: payload['liveness_score'] != null 
-              ? (payload['liveness_score'] as num).toDouble() 
+          livenessScore: payload['liveness_score'] != null
+              ? (payload['liveness_score'] as num).toDouble()
               : null,
           spoofScore: (payload['spoof_score'] as num).toDouble(),
+          timestamp: backendTimestamp,
+          fullLogData: fullLogData,
         );
         // 2. Mark local log as synced
-        await LocalLogService.instance.updateLogSyncStatus(logId, isSynced: true);
+        await LocalLogService.instance.updateLogSyncStatus(
+          logId,
+          isSynced: true,
+        );
       } catch (error) {
         // If API fails (e.g. network/offline), log the error but treat the match as temporarily valid if accepted locally
         await LocalLogService.instance.updateLogSyncStatus(
@@ -359,7 +377,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           punch = PunchResult(
             accepted: false,
             employee: match.employeeId != null
-                ? EmployeeProfile(id: match.employeeId!, name: employeeName, faceRegistered: true)
+                ? EmployeeProfile(
+                    id: match.employeeId!,
+                    name: employeeName,
+                    faceRegistered: true,
+                  )
                 : null,
           );
         }
@@ -402,9 +424,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       );
     } catch (error) {
       await _deleteImageQuietly(imagePath);
-      await _logRejectedScan(error.toString());
+      await _logRejectedScan(error.toString().replaceAll('uri=', 'url='));
       if (!mounted) return;
-      _pauseAfterScan(error.toString());
+      _pauseAfterScan(error.toString().replaceAll('uri=', 'url='));
     }
   }
 
@@ -429,6 +451,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
     final now = DateTime.now();
     final logId = 'log_${now.millisecondsSinceEpoch}_err';
+    final backendTimestamp = now.toUtc().toIso8601String();
+    final fullLogData = {
+      'local_log_id': logId,
+      'local_timestamp': now.toIso8601String(),
+      'backend_timestamp': backendTimestamp,
+      'employee_name': 'System Error',
+      'is_synced': false,
+      'sync_error': null,
+      'payload': payload,
+    };
 
     await LocalLogService.instance.addLog(
       id: logId,
@@ -448,6 +480,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         failureReason: error,
         livenessPassed: false,
         spoofScore: 1.0,
+        timestamp: backendTimestamp,
+        fullLogData: fullLogData,
       );
       await LocalLogService.instance.updateLogSyncStatus(logId, isSynced: true);
     } catch (_) {

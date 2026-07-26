@@ -399,33 +399,33 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                               ],
                             ),
-                            if (_deviceId != null) ...[
-                              const Divider(
-                                height: 24,
-                                thickness: 0.8,
-                                color: FaceAttendColors.border,
-                              ),
-                              Row(
-                                children: [
-                                  const Icon(
-                                    Icons.fingerprint,
-                                    color: FaceAttendColors.accent,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: 10),
-                                  Expanded(
-                                    child: SelectableText(
-                                      'Device Identity ID:\n$_deviceId',
-                                      style: const TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w700,
-                                        color: FaceAttendColors.ink,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                            // if (_deviceId != null) ...[
+                            //   const Divider(
+                            //     height: 24,
+                            //     thickness: 0.8,
+                            //     color: FaceAttendColors.border,
+                            //   ),
+                            //   Row(
+                            //     children: [
+                            //       const Icon(
+                            //         Icons.fingerprint,
+                            //         color: FaceAttendColors.accent,
+                            //         size: 20,
+                            //       ),
+                            //       const SizedBox(width: 10),
+                            //       Expanded(
+                            //         child: SelectableText(
+                            //           'Device Identity ID:\n$_deviceId',
+                            //           style: const TextStyle(
+                            //             fontSize: 12,
+                            //             fontWeight: FontWeight.w700,
+                            //             color: FaceAttendColors.ink,
+                            //           ),
+                            //         ),
+                            //       ),
+                            //     ],
+                            //   ),
+                            // ],
                           ],
                         ),
                       ),

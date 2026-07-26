@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../api/odoo_face_attendance_client.dart';
 import '../models/session.dart';
+import 'database_helper.dart';
 import 'face_recognition_service.dart';
 
 class OnDeviceFaceMatcher {
@@ -293,6 +294,26 @@ class LocalFaceIndexStore {
 
   static Future<LocalFaceIndex> read() async {
     try {
+      await DatabaseHelper.instance.migrateLegacyFilesIfNeeded();
+      final records = await DatabaseHelper.instance.getFaceRecords();
+      if (records.isNotEmpty) {
+        final faceRecords = records.map((r) => LocalFaceRecord.fromJson({
+          'employee_id': r['employee_id'],
+          'employee_name': r['employee_name'],
+          'department': r['department'],
+          'avatar_write_date': r['avatar_write_date'],
+          'primary_embedding': r['primary_embedding'],
+          'adaptive_embeddings': r['adaptive_embeddings'],
+        })).toList();
+        return LocalFaceIndex(
+          modelVersion: OnDeviceFaceMatcher.modelVersion,
+          threshold: OnDeviceFaceMatcher.defaultThreshold,
+          syncedAt: DateTime.now(),
+          records: faceRecords,
+        );
+      }
+
+      // JSON Fallback
       final directory = await getApplicationSupportDirectory();
       final file = File('${directory.path}/$_fileName');
       if (!await file.exists()) return LocalFaceIndex.empty();
@@ -305,11 +326,29 @@ class LocalFaceIndexStore {
   }
 
   static Future<void> write(LocalFaceIndex index) async {
-    final directory = await getApplicationSupportDirectory();
-    final file = File('${directory.path}/$_fileName');
-    await file.writeAsString(jsonEncode(index.toJson()));
+    try {
+      // 1. Save to SQLite
+      for (final rec in index.records) {
+        await DatabaseHelper.instance.saveFaceRecord(
+          employeeId: rec.employeeId,
+          employeeName: rec.employeeName,
+          department: rec.department,
+          avatarWriteDate: rec.avatarWriteDate,
+          primaryEmbedding: rec.primaryEmbedding,
+          adaptiveEmbeddings: rec.adaptiveEmbeddings,
+        );
+      }
+
+      // 2. JSON Fallback
+      final directory = await getApplicationSupportDirectory();
+      final file = File('${directory.path}/$_fileName');
+      await file.writeAsString(jsonEncode(index.toJson()));
+    } catch (e) {
+      debugPrint('Error writing LocalFaceIndex to SQLite/JSON: $e');
+    }
   }
 }
+
 
 class LocalFaceIndex {
   const LocalFaceIndex({

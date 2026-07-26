@@ -1,15 +1,4 @@
 import 'dart:math' as math;
-import 'package:flutter/material.dart';
-
-import 'src/api/odoo_face_attendance_client.dart';
-import 'src/models/session.dart';
-import 'src/screens/attendance_screen.dart';
-import 'src/screens/login_screen.dart';
-import 'src/screens/settings_screen.dart';
-import 'src/screens/local_log_screen.dart';
-import 'src/services/local_log_service.dart';
-import 'src/services/secure_session_store.dart';
-import 'src/theme/app_theme.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -20,12 +9,23 @@ import 'src/screens/attendance_screen.dart';
 import 'src/screens/local_log_screen.dart';
 import 'src/screens/login_screen.dart';
 import 'src/screens/settings_screen.dart';
+import 'src/services/database_helper.dart';
 import 'src/services/local_log_service.dart';
 import 'src/services/secure_session_store.dart';
 import 'src/theme/app_theme.dart';
+import 'src/widgets/secret_token_dialog.dart';
+
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialize SQLite Database and run migration from legacy files if needed
+  try {
+    await DatabaseHelper.instance.database;
+    await DatabaseHelper.instance.migrateLegacyFilesIfNeeded();
+  } catch (e) {
+    debugPrint("SQLite initialization warning: $e");
+  }
 
   // ================================
   // PRINT ALL FLUTTER SECURE STORAGE
@@ -454,25 +454,33 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.face_retouching_natural,
-              color: FaceAttendColors.accent,
-              size: 22,
-            ),
-            const SizedBox(width: 8),
-            const Text(
-              'PISmartPunch',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                letterSpacing: -0.5,
+        title: GestureDetector(
+          onLongPress: () => SecretTokenDialog.show(context),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.face_retouching_natural,
+                color: FaceAttendColors.accent,
+                size: 22,
               ),
-            ),
-          ],
+              const SizedBox(width: 8),
+              const Text(
+                'PISmartPunch',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.5,
+                ),
+              ),
+            ],
+          ),
         ),
         actions: [
+          IconButton(
+            onPressed: () => SecretTokenDialog.show(context),
+            tooltip: 'Database Inspector (Secret Token)',
+            icon: const Icon(Icons.admin_panel_settings, color: Colors.amber),
+          ),
           IconButton(
             onPressed: _refresh,
             tooltip: 'Refresh Status',
@@ -493,6 +501,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             icon: const Icon(Icons.settings),
           ),
         ],
+
       ),
       body: SafeArea(
         child: AnimatedBuilder(

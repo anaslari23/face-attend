@@ -5,6 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import '../api/odoo_face_attendance_client.dart';
+import 'database_helper.dart';
 
 class LocalPunchLog {
   LocalPunchLog({
@@ -67,7 +68,7 @@ class LocalLogService {
     debugPrint("========================================");
     debugPrint("Documents Directory: ${directory.path}");
 
-    final file = File('${directory.path}/face_attend_punch_logs.json');
+    final file = File('${directory.path}/$_fileName');
 
     debugPrint("Log File Path: ${file.path}");
 
@@ -107,9 +108,9 @@ class LocalLogService {
   }
 
   Future<void> pruneOldLogs() async {
-    final logs = await getLogs();
     final cutoff = _getCutoffDate(DateTime.now());
-    final originalLength = logs.length;
+    await DatabaseHelper.instance.pruneOldLogs(cutoff);
+    final logs = await getLogs();
     final pruned = logs
         .where(
           (log) =>
@@ -117,12 +118,7 @@ class LocalLogService {
               log.timestamp.isAtSameMomentAs(cutoff),
         )
         .toList();
-    if (pruned.length < originalLength) {
-      await saveLogs(pruned);
-      debugPrint(
-        'Pruned ${originalLength - pruned.length} old logs at ${DateTime.now()}',
-      );
-    }
+    await saveLogs(pruned);
   }
 
   Future<List<LocalPunchLog>> getLogs() async {
@@ -130,17 +126,9 @@ class LocalLogService {
       return _cache!;
     }
     try {
-      final file = await _getLogFile();
-      if (!await file.exists()) {
-        _cache = [];
-        return _cache!;
-      }
-      final contents = await file.readAsString();
-      final decoded = jsonDecode(contents) as List<dynamic>;
-      _cache = decoded
-          .map((item) => LocalPunchLog.fromJson(item as Map<String, dynamic>))
-          .toList();
-      // Sort with newest logs first
+      await DatabaseHelper.instance.migrateLegacyFilesIfNeeded();
+      final dbLogs = await DatabaseHelper.instance.getAllPunchLogs();
+      _cache = dbLogs.map((item) => LocalPunchLog.fromJson(item)).toList();
       _cache!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
       // Prune logs older than our cutoff
@@ -160,7 +148,7 @@ class LocalLogService {
 
       return _cache!;
     } catch (e) {
-      debugPrint('Error reading local logs: $e');
+      debugPrint('Error reading SQLite logs: $e');
       _cache = [];
       return _cache!;
     }
@@ -171,7 +159,6 @@ class LocalLogService {
       _cache = List.from(logs);
       _cache!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-      // Prune logs older than our cutoff
       final cutoff = _getCutoffDate(DateTime.now());
       _cache = _cache!
           .where(
@@ -181,16 +168,28 @@ class LocalLogService {
           )
           .toList();
 
-      // Limit list size to avoid infinite storage growth
       if (_cache!.length > _maxLogCount) {
         _cache = _cache!.sublist(0, _maxLogCount);
       }
 
+      // Save to SQLite for each log
+      for (final log in _cache!) {
+        await DatabaseHelper.instance.insertPunchLog(
+          id: log.id,
+          timestamp: log.timestamp,
+          employeeName: log.employeeName,
+          isSynced: log.isSynced,
+          syncError: log.syncError,
+          payload: log.payload,
+        );
+      }
+
+      // Maintain legacy JSON file backup
       final file = await _getLogFile();
       final jsonList = _cache!.map((log) => log.toJson()).toList();
       await file.writeAsString(jsonEncode(jsonList));
     } catch (e) {
-      debugPrint('Error saving local logs: $e');
+      debugPrint('Error saving local logs to SQLite/JSON: $e');
     }
   }
 
@@ -202,6 +201,17 @@ class LocalLogService {
     required bool isSynced,
     String? syncError,
   }) async {
+    // 1. Immediately insert into SQLite database
+    await DatabaseHelper.instance.insertPunchLog(
+      id: id,
+      timestamp: timestamp,
+      employeeName: employeeName,
+      isSynced: isSynced,
+      syncError: syncError,
+      payload: payload,
+    );
+
+    // 2. Update memory cache and JSON fallback
     final logs = await getLogs();
     final newLog = LocalPunchLog(
       id: id,
@@ -220,6 +230,14 @@ class LocalLogService {
     required bool isSynced,
     String? syncError,
   }) async {
+    // 1. Update in SQLite
+    await DatabaseHelper.instance.updatePunchLogSyncStatus(
+      id,
+      isSynced: isSynced,
+      syncError: syncError,
+    );
+
+    // 2. Update in memory cache & JSON
     final logs = await getLogs();
     final index = logs.indexWhere((log) => log.id == id);
     if (index != -1) {
@@ -228,6 +246,7 @@ class LocalLogService {
       await saveLogs(logs);
     }
   }
+
 
   String _backendTimestamp(DateTime timestamp) {
     return timestamp.toUtc().toIso8601String();

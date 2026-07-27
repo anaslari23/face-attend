@@ -31,10 +31,24 @@ class OnDeviceFaceMatcher {
 
   Future<FaceIndexSyncResult> sync() async {
     final stored = await LocalFaceIndexStore.read();
-    final remote = await _client.scannerEmployees(
-      modelVersion: modelVersion,
-      knownAvatarWriteDates: stored.avatarWriteDateMap,
-    );
+    ScannerEmployeeSync remote;
+    try {
+      remote = await _client.scannerEmployees(
+        modelVersion: modelVersion,
+        knownAvatarWriteDates: stored.avatarWriteDateMap,
+      );
+    } catch (e) {
+      if (stored.records.isNotEmpty) {
+        debugPrint('FaceAttend sync: network error ($e), using cached embeddings.');
+        _index = stored;
+        return FaceIndexSyncResult(
+          indexedEmployees: stored.records.length,
+          failures: ['Offline mode: Using cached employee list. ($e)'],
+        );
+      } else {
+        rethrow;
+      }
+    }
     final effectiveModelVersion = remote.modelVersion == modelVersion
         ? remote.modelVersion
         : modelVersion;

@@ -356,6 +356,7 @@ class LocalLogService {
               ? (p['spoof_score'] as num).toDouble()
               : null,
           timestamp: originalTimestampStr,
+          punchTime: originalTimestampStr,
           fullLogData: _fullLogData(log, originalTimestampStr),
         );
 

@@ -31,27 +31,26 @@ class OdooFaceAttendanceClient {
     }
     final dbs = <String>[];
     
-    // Check for 'db_name'
-    final dbNameVal = payload['db_name'];
-    if (dbNameVal is List) {
-      dbs.addAll(dbNameVal.map((e) => e.toString()));
-    } else if (dbNameVal is String && dbNameVal.isNotEmpty) {
-      dbs.add(dbNameVal);
+    void addDbValue(dynamic val) {
+      if (val is List) {
+        for (final item in val) {
+          addDbValue(item);
+        }
+      } else if (val is Map) {
+        final name = val['name']?.toString();
+        if (name != null && name.isNotEmpty) {
+          dbs.add(name);
+        }
+      } else if (val is String && val.isNotEmpty) {
+        dbs.add(val);
+      } else if (val != null) {
+        dbs.add(val.toString());
+      }
     }
-    
-    // Check for 'databases'
-    final databasesVal = payload['databases'];
-    if (databasesVal is List) {
-      dbs.addAll(databasesVal.map((e) => e.toString()));
-    }
-    
-    // Check for 'db'
-    final dbVal = payload['db'];
-    if (dbVal is List) {
-      dbs.addAll(dbVal.map((e) => e.toString()));
-    } else if (dbVal is String && dbVal.isNotEmpty) {
-      dbs.add(dbVal);
-    }
+
+    addDbValue(payload['db_name']);
+    addDbValue(payload['databases']);
+    addDbValue(payload['db']);
 
     return dbs.toSet().toList();
   }
@@ -167,6 +166,7 @@ class OdooFaceAttendanceClient {
     double? livenessScore,
     double? spoofScore,
     String? timestamp,
+    String? punchTime,
     Map<String, dynamic>? fullLogData,
   }) async {
     final body = <String, dynamic>{
@@ -184,10 +184,15 @@ class OdooFaceAttendanceClient {
       'liveness_passed': livenessPassed,
       'liveness_score': livenessScore,
       'spoof_score': spoofScore,
-      'full_log_data': ?fullLogData,
+      'full_log_data': fullLogData,
     };
     if (timestamp != null) {
       body['timestamp'] = timestamp;
+    }
+    if (punchTime != null) {
+      body['punch_time'] = punchTime;
+    } else if (timestamp != null) {
+      body['punch_time'] = timestamp;
     }
     if (fullLogData != null) {
       _printLongMessage('FULL LOG DATA', jsonEncode(fullLogData));

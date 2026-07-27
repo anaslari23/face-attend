@@ -348,6 +348,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               : null,
           spoofScore: (payload['spoof_score'] as num).toDouble(),
           timestamp: backendTimestamp,
+          punchTime: backendTimestamp,
           fullLogData: fullLogData,
         );
         // 2. Mark local log as synced
@@ -481,6 +482,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         livenessPassed: false,
         spoofScore: 1.0,
         timestamp: backendTimestamp,
+        punchTime: backendTimestamp,
         fullLogData: fullLogData,
       );
       await LocalLogService.instance.updateLogSyncStatus(logId, isSynced: true);

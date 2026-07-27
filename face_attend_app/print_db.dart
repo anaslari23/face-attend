@@ -16,6 +16,8 @@ void main(List<String> args) async {
 
   // Potential search paths for face_attend.db on macOS/Linux/iOS simulator
   final searchPaths = [
+    'face_attend.db',
+    '.face_attend_pulled.db',
     '$home/Documents/face_attend.db',
     '$home/Library/Containers/com.example.faceAttendApp/Data/Documents/face_attend.db',
     '$home/Library/Application Support/com.example.faceAttendApp/face_attend.db',
@@ -28,6 +30,55 @@ void main(List<String> args) async {
     if (await file.exists()) {
       dbFile = file;
       break;
+    }
+  }
+
+  // If not found in local paths, try to pull it from a connected Android device/emulator
+  if (dbFile == null) {
+    try {
+      final devicesResult = await Process.run('adb', ['devices']);
+      if (devicesResult.exitCode == 0) {
+        final devicesOutput = devicesResult.stdout.toString();
+        // Check if there are any active devices listed (excluding the header line "List of devices attached")
+        final hasDevice = devicesOutput.split('\n')
+            .any((line) => line.trim().isNotEmpty && !line.startsWith('List of devices') && line.contains('device'));
+        
+        if (hasDevice) {
+          print('No local database file found. Android device/emulator detected via ADB.');
+          print('Attempting to pull database from device...');
+          
+          final pullResult = await Process.run(
+            'adb',
+            [
+              'exec-out',
+              'run-as',
+              'com.example.face_attend_app',
+              'cat',
+              'app_flutter/face_attend.db'
+            ],
+            stdoutEncoding: null,
+          );
+          
+          if (pullResult.exitCode == 0 && pullResult.stdout is List<int>) {
+            final bytes = pullResult.stdout as List<int>;
+            if (bytes.isNotEmpty) {
+              final header = String.fromCharCodes(bytes.take(15));
+              if (header.startsWith('SQLite format 3')) {
+                final file = File('.face_attend_pulled.db');
+                await file.writeAsBytes(bytes);
+                dbFile = file;
+                print('Successfully pulled database from Android device to local: ${file.path}\n');
+              } else {
+                print('ADB: Connection succeeded but did not return a valid SQLite file (possibly empty or no permission).\n');
+              }
+            }
+          } else {
+            print('ADB: Failed to pull database file from device (run-as command failed or app not debuggable).\n');
+          }
+        }
+      }
+    } catch (_) {
+      // adb command probably not installed/available or failed, ignore and continue
     }
   }
 
@@ -65,13 +116,13 @@ void main(List<String> args) async {
   print('================================================================');
   print('          FLUTTER SQFLITE DATABASE INSPECTOR & EXPORTER        ');
   print('================================================================');
-  print('Database Path : ${dbFile.path}');
+  print('Database Path : ${dbFile.absolute.path}');
   print('File Size     : ${await dbFile.length()} bytes\n');
 
   Database? db;
   try {
     db = await databaseFactory.openDatabase(
-      dbFile.path,
+      dbFile.absolute.path,
       options: OpenDatabaseOptions(readOnly: true),
     );
 

@@ -1,4 +1,3 @@
-import base64
 import hashlib
 import json
 import os
@@ -6,12 +5,12 @@ import secrets
 import struct
 from datetime import timedelta
 
-import requests
-
 # pyrefly: ignore [missing-import]
 from odoo import _, api, fields, models
 # pyrefly: ignore [missing-import]
 from odoo.exceptions import UserError
+
+from ..services import embed_avatar
 
 
 ARCFACE_MODEL_VERSION = "arcface-w600k-r50-align-v3"
@@ -199,10 +198,6 @@ class FaceAttendanceTemplate(models.Model):
 
     @api.model
     def _cron_generate_templates(self, limit=50):
-        worker_url = self.env["ir.config_parameter"].sudo().get_param("face_attendance.template_worker_url")
-        if not worker_url:
-            return
-        worker_token = self.env["ir.config_parameter"].sudo().get_param("face_attendance.template_worker_token")
         pending = self.search([("state", "=", "pending"), ("active", "=", True)], limit=limit, order="revision")
         for template in pending:
             employee = template.employee_id
@@ -214,26 +209,10 @@ class FaceAttendanceTemplate(models.Model):
                 if self._avatar_hash(image_bytes) != template.avatar_hash:
                     self.mark_pending(employee, image_bytes)
                     continue
-                response = requests.post(
-                    worker_url.rstrip("/") + "/v1/templates",
-                    json={
-                        "employee_id": employee.id,
-                        "model_version": template.model_version,
-                        "avatar_base64": base64.b64encode(image_bytes).decode(),
-                    },
-                    headers={"Authorization": "Bearer %s" % worker_token} if worker_token else {},
-                    timeout=30,
-                )
-                response.raise_for_status()
-                payload = response.json()
-                if payload.get("model_version") != template.model_version:
-                    raise UserError(_("Template worker returned a different ArcFace model version."))
-                if payload.get("employee_id") != employee.id:
-                    raise UserError(_("Template worker returned a different employee ID."))
-                if payload.get("avatar_hash") != template.avatar_hash:
-                    raise UserError(_("Template worker returned a different avatar hash."))
-                embedding = base64.b64decode(payload["embedding_b64"], validate=True)
-                template._set_embedding(embedding, float(payload.get("quality_score") or 0.0))
+                embedding, quality_score, avatar_hash = embed_avatar(self.env, image_bytes)
+                if avatar_hash != template.avatar_hash:
+                    raise UserError(_("ArcFace worker returned a different avatar hash."))
+                template._set_embedding(embedding, quality_score)
             except Exception as error:
                 template.write({"state": "failed", "worker_error": str(error), "revision": self._next_revision()})
                 if template.employee_id:

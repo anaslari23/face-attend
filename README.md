@@ -88,24 +88,24 @@ The setup code becomes the scanner token stored on the phone.
 
 ### 5. Configure Template Worker and Backfill
 
+Install the required packages into the same Python virtual environment that runs Odoo:
+
+```bash
+/path/to/odoo-venv/bin/pip install cryptography mediapipe numpy onnxruntime opencv-python-headless Pillow
+```
+
+Copy the bundled model once to the Odoo server, for example:
+
+```bash
+install -m 0644 face_attend_app/assets/models/w600k_r50.onnx /opt/odoo/models/w600k_r50.onnx
+```
+
 Set these server-side values outside source control:
 
 - `FACE_ATTENDANCE_TEMPLATE_KEY`: a valid Fernet key used to encrypt templates at rest.
-- `FACE_TEMPLATE_WORKER_TOKEN`: a random shared token for Odoo and the Docker worker.
+- `FACE_ATTENDANCE_ARCFACE_MODEL`: `/opt/odoo/models/w600k_r50.onnx`
 
-Start the internal worker on the Odoo network:
-
-```bash
-FACE_TEMPLATE_WORKER_TOKEN='replace-with-a-random-secret' \
-docker compose -f docker-compose.template-worker.yml up -d --build
-```
-
-Set these Odoo system parameters:
-
-- `face_attendance.template_worker_url`: `http://127.0.0.1:8088`
-- `face_attendance.template_worker_token`: the same `FACE_TEMPLATE_WORKER_TOKEN` value
-
-The worker uses the bundled `w600k_r50.onnx` model and the same five-point ArcFace alignment as the phone. It accepts only HR avatars and returns model version, avatar hash, quality score, and a packed 512-float embedding; it never receives live scanner photos.
+The Odoo cron uses the bundled `w600k_r50.onnx` model and the same five-point ArcFace alignment as the phone. It processes only HR avatars and stores encrypted 512-float templates; it never receives live scanner photos.
 
 Open **Face Attendance > Configuration** and select **Queue Template Backfill**. The one-minute cron processes up to 50 queued avatars per run. Use the visible pending/ready/failed counts to monitor the first backfill and **Retry Failed Templates** after correcting invalid HR avatars. New and changed avatars queue automatically.
 
@@ -160,7 +160,7 @@ Server side:
 - Odoo with `hr` and `hr_attendance`
 - `face_attendance` addon installed
 - Network access from scanner phones to Odoo
-- An internal template worker and a configured Fernet key
+- Odoo Python dependencies for ArcFace and a configured Fernet key
 
 Phone side:
 
@@ -169,7 +169,7 @@ Phone side:
 - Enough memory to run the bundled ArcFace ONNX model
 - Flutter scanner APK installed
 
-The template worker is required for enterprise scanner provisioning; it generates avatar embeddings centrally, while live scans stay on the phone.
+Odoo generates avatar embeddings centrally for enterprise scanner provisioning, while live scans stay on the phone.
 
 ## CI/CD
 

@@ -27,17 +27,11 @@ jobs:
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - run: flutter test
       - run: flutter build apk --debug --target-platform android-arm64
-      - run: docker build --tag face-template-worker:test -f template_worker/Dockerfile .
-      - name: Check template worker
+      - name: Check Odoo template worker syntax
+        working-directory: .
         run: |
-          docker run --detach --rm --name face-template-worker -p 8080:8080 -e WORKER_TOKEN=ci-test face-template-worker:test
-          healthy=0
-          for attempt in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:8080/healthz; then healthy=1; break; fi
-            sleep 1
-          done
-          test "$healthy" = 1
-          docker stop face-template-worker
+          python3 -m py_compile face_attendance/services/arcface.py face_attendance/models/face_attendance.py
+          python3 face_attendance/services/test_arcface_math.py
       - uses: actions/upload-artifact@v4
         with:
           name: scanner-debug-apk

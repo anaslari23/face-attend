@@ -6,7 +6,7 @@
     "author": "Primacy Infotech Pvt. Ltd.",
     "license": "LGPL-3",
     "depends": ["hr", "hr_attendance"],
-    "external_dependencies": {"python": ["requests", "cryptography"]},
+    "external_dependencies": {"python": ["cryptography", "cv2", "mediapipe", "numpy", "onnxruntime", "PIL"]},
     "data": [
         "security/face_attendance_security.xml",
         "security/ir.model.access.csv",

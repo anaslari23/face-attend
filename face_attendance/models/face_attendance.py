@@ -60,6 +60,18 @@ class FaceAttendanceConfig(models.Model):
         }
 
 
+class FaceAttendanceConnectedDevice(models.Model):
+    _name = "face.attendance.connected.device"
+    _description = "Face Attendance Connected Device"
+
+    name = fields.Char(string="Device ID", required=True)
+    generated_device_id = fields.Char(string="Generated Device ID", readonly=True)
+    device_id = fields.Many2one("face.attendance.device", string="Scanner Setup", ondelete="cascade", required=True)
+
+    _sql_constraints = [
+        ("device_unique", "unique(name, device_id)", "Device must be unique per scanner setup.")
+    ]
+
 class FaceAttendanceDevice(models.Model):
     _name = "face.attendance.device"
     _description = "Face Attendance Device"
@@ -79,26 +91,51 @@ class FaceAttendanceDevice(models.Model):
         index=True,
     )
     employee_id = fields.Many2one("hr.employee", index=True, ondelete="cascade")
-    device_uid = fields.Char(index=True)
+    device_uid = fields.Char(required=True, index=True)
     token = fields.Char(required=True, index=True, copy=False, default=_default_token)
     setup_code = fields.Char(string="Scanner Setup Code", compute="_compute_setup_code")
     token_expires_at = fields.Datetime(required=True, default=_default_token_expires_at)
     last_seen_at = fields.Datetime()
     active = fields.Boolean(default=True)
-    config_id = fields.Many2one("face.attendance.config", string="Configuration", default=lambda self: self.env["face.attendance.config"].search([], limit=1))
+    config_id = fields.Many2one("face.attendance.config", string="Configuration",
+                                default=lambda self: self.env["face.attendance.config"].search([], limit=1))
+    
+    devices_can_connect = fields.Integer(string="Devices Can Connect", default=1)
+    total_connected_devices = fields.Integer(string="Total Connected Devices", compute="_compute_total_connected_devices", store=True)
+    connected_device_line_ids = fields.One2many("face.attendance.connected.device", "device_id", string="Connected Device IDs")
+    device_try_to_connect = fields.Char(string="Device Trying to Connect")
 
     _sql_constraints = [
-        ("employee_device_unique", "unique(employee_id, device_uid)", "This device is already registered for the employee."),
+        ("employee_device_unique", "unique(employee_id, device_uid)",
+         "This device is already registered for the employee."),
     ]
 
-    @api.constrains("device_type", "employee_id", "device_uid")
+    @api.depends("connected_device_line_ids")
+    def _compute_total_connected_devices(self):
+        for record in self:
+            record.total_connected_devices = len(record.connected_device_line_ids)
+
+    @api.constrains("devices_can_connect", "connected_device_line_ids")
+    def _check_devices_can_connect(self):
+        for record in self:
+            if record.devices_can_connect < len(record.connected_device_line_ids):
+                raise UserError(_("Devices Can Connect cannot be less than the Total Connected Devices."))
+
+    @api.onchange("devices_can_connect", "connected_device_line_ids")
+    def _onchange_devices_can_connect(self):
+        if self.devices_can_connect < len(self.connected_device_line_ids):
+            return {
+                "warning": {
+                    "title": _("Warning"),
+                    "message": _("Devices Can Connect cannot be less than the Total Connected Devices. Please increase the limit or remove some connected devices.")
+                }
+            }
+
+    @api.constrains("device_type", "employee_id")
     def _check_employee_device(self):
         for record in self:
-            if record.device_type == "employee":
-                if not record.employee_id:
-                    raise UserError(_("Employee devices must be linked to an employee."))
-                if not record.device_uid:
-                    raise UserError(_("Employee devices must have a Device UID."))
+            if record.device_type == "employee" and not record.employee_id:
+                raise UserError(_("Employee devices must be linked to an employee."))
 
     def action_generate_token(self):
         for record in self:
@@ -112,7 +149,7 @@ class FaceAttendanceDevice(models.Model):
 class FaceAttendanceLog(models.Model):
     _name = "face.attendance.log"
     _description = "Face Attendance Audit Log"
-    _order = "create_date desc"
+    _order = "punch_time desc"
 
     employee_id = fields.Many2one("hr.employee", index=True, ondelete="cascade")
     attendance_id = fields.Many2one("hr.attendance", index=True, ondelete="set null")
@@ -128,9 +165,12 @@ class FaceAttendanceLog(models.Model):
     liveness_passed = fields.Boolean(default=False, index=True)
     liveness_score = fields.Float()
     spoof_score = fields.Float()
-    accepted = fields.Boolean(default=False, index=True)
+    accepted = fields.Boolean(default=True, index=True)
     failure_reason = fields.Char()
     raw_payload = fields.Text()
+    is_sync = fields.Boolean(string="SYNC", default=False, index=True)
+
+    punch_time = fields.Datetime(string="Punch Time", default=fields.Datetime.now, index=True)
 
     employee_odoo_id = fields.Integer(string="Employee ID", compute="_compute_employee_display", store=True)
     employee_name = fields.Char(string="Employee Name", compute="_compute_employee_display", store=True)
@@ -149,20 +189,24 @@ class FaceAttendanceLog(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        for vals in vals_list:
+            if not vals.get("punch_time") and vals.get("create_date"):
+                vals["punch_time"] = vals["create_date"]
+        
         logs = super().create(vals_list)
         for log in logs:
             if log.employee_id and log.accepted:
-                start_of_day = log.create_date.replace(hour=0, minute=0, second=0, microsecond=0)
-                end_of_day = log.create_date.replace(hour=23, minute=59, second=59, microsecond=999999)
-                
+                start_of_day = log.punch_time.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_of_day = log.punch_time.replace(hour=23, minute=59, second=59, microsecond=999999)
+
                 last_log = self.env["face.attendance.log"].search([
                     ("employee_id", "=", log.employee_id.id),
-                    ("create_date", ">=", start_of_day),
-                    ("create_date", "<=", end_of_day),
+                    ("punch_time", ">=", start_of_day),
+                    ("punch_time", "<=", end_of_day),
                     ("id", "!=", log.id),
                     ("punch_type", "!=", False)
-                ], limit=1, order="create_date desc")
-                
+                ], limit=1, order="punch_time desc")
+
                 if not last_log:
                     punch_type = "check_in"
                 elif last_log.punch_type == "check_in":
@@ -175,43 +219,55 @@ class FaceAttendanceLog(models.Model):
                     ("check_in", ">=", start_of_day),
                     ("check_in", "<=", end_of_day)
                 ], limit=1, order="check_in asc")
-                
+
+                is_sync = False
                 if not daily_attendance:
                     daily_attendance = self.env["hr.attendance"].create({
                         "employee_id": log.employee_id.id,
-                        "check_in": log.create_date,
+                        "check_in": log.punch_time,
                         "recognition_confidence": log.match_score,
                         "recognition_method": "face",
                         "face_device_uid": log.device_uid,
                         "face_log_id": log.id,
+                        "in_mode": "pi_smart_punch",
                     })
-                
+                    is_sync = True
+
                 log.attendance_id = daily_attendance.id if daily_attendance else False
                 log.punch_type = punch_type
+                if is_sync:
+                    log.is_sync = True
         return logs
 
     @api.model
     def _cron_auto_checkout(self):
-        today = fields.Datetime.now()
-        start_of_day = today.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_of_day = today.replace(hour=23, minute=59, second=59, microsecond=999999)
-        
+        # 1. Search for all open attendances (no date restriction)
         domain = [
-            ("check_in", ">=", start_of_day),
-            ("check_in", "<=", end_of_day),
             ("check_out", "=", False),
+            ("in_mode", "in", ("pi_smart_punch", "pi_fieldpro")),
         ]
         open_attendances = self.env["hr.attendance"].search(domain)
-        
+
         for attendance in open_attendances:
+            # 2. Compute the day range based on the individual check_in time
+            check_in_date = attendance.check_in
+            start_of_day = check_in_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_of_day = check_in_date.replace(hour=23, minute=59, second=59, microsecond=999999)
+
             log_domain = [
                 ("employee_id", "=", attendance.employee_id.id),
-                ("accepted", "=", True),
-                ("create_date", ">=", start_of_day),
-                ("create_date", "<=", end_of_day),
+                ("punch_time", ">=", start_of_day),
+                ("punch_time", "<=", end_of_day),
             ]
-            last_log = self.search(log_domain, order="create_date desc", limit=1)
-            
+            last_log = self.search(log_domain, order="punch_time desc", limit=1)
+
             if last_log:
-                attendance.write({"check_out": last_log.create_date})
+                attendance.with_context(bypass_fieldpro_block=True).write({
+                    "check_out": last_log.punch_time,
+                    "out_mode": "pi_smart_punch",
+                })
+                last_log.write({
+                    "is_sync": True,
+                })
+
 

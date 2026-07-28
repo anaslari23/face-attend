@@ -1,7 +1,7 @@
 {
-    "name": "Face Attendance",
+    "name": "PI Face Attendance",
     "summary": "Employee phone face attendance integrated with HR Attendance",
-    "version": "1.0",
+    "version": "1.1",
     "category": "Human Resources/Attendances",
     "author": "Primacy Infotech Pvt. Ltd.",
     "license": "LGPL-3",

@@ -3,9 +3,7 @@ import logging
 import secrets
 from datetime import timedelta
 
-# pyrefly: ignore [missing-import]
 from odoo import fields, http
-# pyrefly: ignore [missing-import]
 from odoo.http import request
 
 _logger = logging.getLogger(__name__)
@@ -41,20 +39,6 @@ class FaceAttendanceController(http.Controller):
         )
         if not device:
             return None
-
-        # Cross-device session check: Ensure token is only used by the device it was registered on.
-        request_device_id = request.httprequest.headers.get("X-Device-ID", "").strip()
-        if device.device_uid:
-            if not request_device_id or device.device_uid != request_device_id:
-                _logger.warning(
-                    "Device mismatch for token authentication. Expected device_uid: %s, received X-Device-ID: %s",
-                    device.device_uid,
-                    request_device_id,
-                )
-                return None
-        elif request_device_id and device.device_type == "scanner":
-            device.sudo().write({"device_uid": request_device_id})
-
         device.last_seen_at = fields.Datetime.now()
         return device
 
@@ -80,7 +64,6 @@ class FaceAttendanceController(http.Controller):
     def scanner_setup(self, **kwargs):
         body = self._body()
         setup_code = (body.get("setup_code") or "").strip()
-        device_id = (body.get("device_id") or "").strip()
         if not setup_code:
             return self._json_response({"error": "setup_code_required"}, status=400)
 
@@ -96,24 +79,37 @@ class FaceAttendanceController(http.Controller):
         if not device:
             return self._json_response({"error": "invalid_scanner_setup_code"}, status=401)
 
-        # Enforce unique device token binding to prevent sharing the setup code across devices
-        if device.device_uid:
-            if not device_id or device.device_uid != device_id:
-                return self._json_response(
-                    {"error": "token_already_registered_to_another_device"},
-                    status=403
-                )
-        elif device_id:
-            device.sudo().write({"device_uid": device_id})
-
         device.last_seen_at = fields.Datetime.now()
-        return self._json_response(
-            {
-                "token": device.token,
-                "device": self._device_payload(device),
-                "attendance": self._empty_status_payload(),
-            }
-        )
+        generated_device_id = None
+
+        device_try_to_connect = body.get("device_try_to_connect")
+        if device_try_to_connect:
+            existing_line = device.connected_device_line_ids.filtered(lambda l: l.name == device_try_to_connect)
+            if not existing_line:
+                if len(device.connected_device_line_ids) >= device.devices_can_connect:
+                    return self._json_response({"error": "You can't connect with this setup code. Try with another or contact with Administrator."}, status=403)
+                
+                import time
+                generated_device_id = str(device_try_to_connect)[-4:] + str(int(time.time()))
+                request.env["face.attendance.connected.device"].sudo().create({
+                    "name": device_try_to_connect,
+                    "generated_device_id": generated_device_id,
+                    "device_id": device.id
+                })
+                device.device_try_to_connect = device_try_to_connect
+            else:
+                generated_device_id = existing_line[0].generated_device_id
+                device.device_try_to_connect = device_try_to_connect
+
+        response_data = {
+            "token": device.token,
+            "device": self._device_payload(device),
+            "attendance": self._empty_status_payload(),
+        }
+        if generated_device_id:
+            response_data["generated_device_id"] = generated_device_id
+
+        return self._json_response(response_data)
 
     @http.route("/face_attendance/scanner/employees", type="http", auth="none", methods=["GET", "POST"], csrf=False)
     def scanner_employees(self, **kwargs):
@@ -137,22 +133,17 @@ class FaceAttendanceController(http.Controller):
             avatar_write_date = fields.Datetime.to_string(employee.write_date)
             known_write_date = str(known_dates.get(str(employee.id)) or known_dates.get(employee.id) or "")
             include_avatar = not allow_incremental or known_write_date != avatar_write_date
-            
-            avatar_data = employee.image_512
-            if not avatar_data and employee.image_1920:
-                avatar_data = employee.image_1920
-
             payload.append(
                 {
                     "id": employee.id,
                     "name": employee.name,
                     "department": employee.department_id.name if employee.department_id else None,
                     "avatar": (
-                        avatar_data.decode("utf-8")
-                        if isinstance(avatar_data, bytes)
-                        else avatar_data
+                        employee.image_1920.decode("utf-8")
+                        if isinstance(employee.image_1920, bytes)
+                        else employee.image_1920
                     )
-                    if include_avatar and avatar_data
+                    if include_avatar
                     else "",
                     "avatar_write_date": avatar_write_date,
                     "face_enabled": True,
@@ -209,9 +200,9 @@ class FaceAttendanceController(http.Controller):
             "last_seen_at": fields.Datetime.now(),
         }
         if device:
-            device.write(vals)
+            device.with_user(1).write(vals)
         else:
-            device = request.env["face.attendance.device"].sudo().create(vals)
+            device = request.env["face.attendance.device"].with_user(1).sudo().create(vals)
 
         return self._json_response(
             {
@@ -247,120 +238,114 @@ class FaceAttendanceController(http.Controller):
 
     @http.route("/face_attendance/punch", type="http", auth="none", methods=["POST"], csrf=False)
     def punch(self, **kwargs):
+        device, error = self._require_device()
+        if error:
+            return error
+        body = self._body()
+        accepted = bool(body.get("accepted"))
+        matched_employee_id = body.get("matched_employee_id")
+        match_score = float(body.get("match_score") or 0.0)
+        threshold = float(body.get("threshold") or self._config("face_attendance.match_threshold", "0.70"))
+        device_id = body.get("device_id") or device.device_uid
+        app_version = body.get("app_version")
+        failure_reason = body.get("failure_reason")
+        second_best_confidence = body.get("second_best_confidence")
+        embedding_source = body.get("embedding_source")
+        review_embedding_id = body.get("review_embedding_id")
+        needs_review = bool(body.get("needs_review"))
+        liveness_passed = bool(body.get("liveness_passed"))
+        liveness_score = body.get("liveness_score")
+        spoof_score = body.get("spoof_score")
         try:
-            device, error = self._require_device()
-            if error:
-                return error
-            body = self._body()
-            accepted = bool(body.get("accepted"))
-            matched_employee_id = body.get("matched_employee_id")
-            match_score = float(body.get("match_score") or 0.0)
-            threshold = float(body.get("threshold") or self._config("face_attendance.match_threshold", "0.70"))
-            device_id = body.get("device_id") or device.device_uid
-            app_version = body.get("app_version")
-            failure_reason = body.get("failure_reason")
-            second_best_confidence = body.get("second_best_confidence")
-            embedding_source = body.get("embedding_source")
-            review_embedding_id = body.get("review_embedding_id")
-            needs_review = bool(body.get("needs_review"))
-            liveness_passed = bool(body.get("liveness_passed"))
-            liveness_score = body.get("liveness_score")
-            spoof_score = body.get("spoof_score")
-            try:
-                second_best_confidence = float(second_best_confidence) if second_best_confidence is not None else False
-            except (TypeError, ValueError):
-                second_best_confidence = False
-            try:
-                review_embedding_id = int(review_embedding_id) if review_embedding_id else False
-            except (TypeError, ValueError):
-                review_embedding_id = False
-            try:
-                liveness_score = float(liveness_score) if liveness_score is not None else 0.0
-            except (TypeError, ValueError):
-                liveness_score = 0.0
-            try:
-                spoof_score = float(spoof_score) if spoof_score is not None else 0.0
-            except (TypeError, ValueError):
-                spoof_score = 0.0
+            second_best_confidence = float(second_best_confidence) if second_best_confidence is not None else False
+        except (TypeError, ValueError):
+            second_best_confidence = False
+        try:
+            review_embedding_id = int(review_embedding_id) if review_embedding_id else False
+        except (TypeError, ValueError):
+            review_embedding_id = False
+        try:
+            liveness_score = float(liveness_score) if liveness_score is not None else 0.0
+        except (TypeError, ValueError):
+            liveness_score = 0.0
+        try:
+            spoof_score = float(spoof_score) if spoof_score is not None else 0.0
+        except (TypeError, ValueError):
+            spoof_score = 0.0
 
-            now = fields.Datetime.now()
-            timestamp_val = body.get("timestamp")
-            if timestamp_val:
+        now = fields.Datetime.now()
+        timestamp_val = body.get("timestamp")
+        if timestamp_val:
+            try:
+                if isinstance(timestamp_val, str):
+                    # Replace ISO 'T' and 'Z' to make it compatible with Odoo's datetime parsing
+                    clean_ts = timestamp_val.replace('Z', '').replace('T', ' ')
+                    now = fields.Datetime.to_datetime(clean_ts)
+                else:
+                    now = fields.Datetime.to_datetime(timestamp_val)
+            except Exception:
+                pass
+
+        employee = device.employee_id
+        if device.device_type == "scanner":
+            employee = None
+            if matched_employee_id:
                 try:
-                    if isinstance(timestamp_val, str):
-                        # Replace ISO 'T' and 'Z' to make it compatible with Odoo's datetime parsing
-                        clean_ts = timestamp_val.replace('Z', '').replace('T', ' ')
-                        now = fields.Datetime.to_datetime(clean_ts)
-                    else:
-                        now = fields.Datetime.to_datetime(timestamp_val)
-                except Exception:
-                    pass
+                    matched_employee_id = int(matched_employee_id)
+                except (TypeError, ValueError):
+                    return self._json_response({"error": "invalid_matched_employee_id"}, status=400)
+                employee = request.env["hr.employee"].sudo().browse(matched_employee_id)
+                if not employee.exists():
+                    return self._json_response({"error": "matched_employee_not_found"}, status=404)
+        if accepted and not employee:
+            return self._json_response({"error": "matched_employee_id_required"}, status=400)
 
-            employee = device.employee_id
-            if device.device_type == "scanner":
-                employee = None
-                if matched_employee_id:
-                    try:
-                        matched_employee_id = int(matched_employee_id)
-                    except (TypeError, ValueError):
-                        return self._json_response({"error": "invalid_matched_employee_id"}, status=400)
-                    employee = request.env["hr.employee"].sudo().browse(matched_employee_id)
-                    if not employee.exists():
-                        return self._json_response({"error": "matched_employee_not_found"}, status=404)
-            if accepted and not employee:
-                return self._json_response({"error": "matched_employee_id_required"}, status=400)
+        if accepted and not liveness_passed and not failure_reason:
+            failure_reason = "liveness_failed"
 
-            if accepted and not liveness_passed and not failure_reason:
-                failure_reason = "liveness_failed"
+        log_accepted = bool(employee) and accepted and match_score >= threshold and liveness_passed
+        if accepted and employee and match_score < threshold and not failure_reason:
+            failure_reason = "below_threshold"
 
-            log_accepted = bool(employee) and accepted and match_score >= threshold and liveness_passed
-            if accepted and employee and match_score < threshold and not failure_reason:
-                failure_reason = "below_threshold"
+        log = request.env["face.attendance.log"].with_user(1).sudo().create(
+            {
+                "employee_id": employee.id if employee else False,
+                "device_uid": device_id,
+                "app_version": app_version,
+                "match_score": match_score,
+                "threshold": threshold,
+                "second_best_confidence": second_best_confidence,
+                "embedding_source": embedding_source,
+                "review_embedding_id": review_embedding_id,
+                "needs_review": needs_review,
+                "liveness_passed": liveness_passed,
+                "liveness_score": liveness_score,
+                "spoof_score": spoof_score,
+                "accepted": log_accepted,
+                "failure_reason": failure_reason,
+                "raw_payload": json.dumps(body),
+            }
+        )
 
-            log = request.env["face.attendance.log"].sudo().create(
-                {
-                    "employee_id": employee.id if employee else False,
-                    "device_uid": device_id,
-                    "app_version": app_version,
-                    "match_score": match_score,
-                    "threshold": threshold,
-                    "second_best_confidence": second_best_confidence,
-                    "embedding_source": embedding_source,
-                    "review_embedding_id": review_embedding_id,
-                    "needs_review": needs_review,
-                    "liveness_passed": liveness_passed,
-                    "liveness_score": liveness_score,
-                    "spoof_score": spoof_score,
-                    "accepted": log_accepted,
-                    "failure_reason": failure_reason,
-                    "raw_payload": json.dumps(body),
-                    "create_date": now,
-                }
-            )
-
-            if not log.accepted:
-                return self._json_response(
-                    {
-                        "accepted": False,
-                        "log_id": log.id,
-                        "employee": self._employee_payload(employee) if employee else None,
-                        "attendance": self._status_payload(employee) if employee else self._empty_status_payload(),
-                    }
-                )
-
+        if not log.accepted:
             return self._json_response(
                 {
-                    "accepted": True,
-                    "punch_type": log.punch_type,
+                    "accepted": False,
                     "log_id": log.id,
-                    "employee": self._employee_payload(employee),
-                    "attendance": self._status_payload(employee),
+                    "employee": self._employee_payload(employee) if employee else None,
+                    "attendance": self._status_payload(employee) if employee else self._empty_status_payload(),
                 }
             )
-        except Exception as e:
-            _logger.exception("Punch failed: %s", e)
-            import traceback
-            return self._json_response({"error": str(e), "traceback": traceback.format_exc()}, status=500)
+
+        return self._json_response(
+            {
+                "accepted": True,
+                "punch_type": log.punch_type,
+                "log_id": log.id,
+                "employee": self._employee_payload(employee),
+                "attendance": self._status_payload(employee),
+            }
+        )
 
     def _device_payload(self, device):
         return {

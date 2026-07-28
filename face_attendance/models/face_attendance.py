@@ -292,6 +292,18 @@ class FaceAttendanceConfig(models.Model):
         }
 
 
+class FaceAttendanceConnectedDevice(models.Model):
+    _name = "face.attendance.connected.device"
+    _description = "Face Attendance Connected Device"
+
+    name = fields.Char(string="Device ID", required=True)
+    generated_device_id = fields.Char(string="Generated Device ID", readonly=True)
+    device_id = fields.Many2one("face.attendance.device", string="Scanner Setup", ondelete="cascade", required=True)
+
+    _sql_constraints = [
+        ("device_unique", "unique(name, device_id)", "Device must be unique per scanner setup.")
+    ]
+
 class FaceAttendanceDevice(models.Model):
     _name = "face.attendance.device"
     _description = "Face Attendance Device"
@@ -306,17 +318,44 @@ class FaceAttendanceDevice(models.Model):
     name = fields.Char(required=True)
     device_type = fields.Selection([("scanner", "Shared Scanner"), ("employee", "Employee Device")], required=True, default="scanner", index=True)
     employee_id = fields.Many2one("hr.employee", index=True, ondelete="cascade")
-    device_uid = fields.Char(index=True)
+    device_uid = fields.Char(required=True, index=True)
     token = fields.Char(required=True, index=True, copy=False, default=_default_token)
     setup_code = fields.Char(string="Scanner Setup Code", compute="_compute_setup_code")
     token_expires_at = fields.Datetime(required=True, default=_default_token_expires_at)
     last_seen_at = fields.Datetime()
     active = fields.Boolean(default=True)
-    config_id = fields.Many2one("face.attendance.config", string="Configuration", default=lambda self: self.env["face.attendance.config"].search([], limit=1))
+    config_id = fields.Many2one("face.attendance.config", string="Configuration",
+                                default=lambda self: self.env["face.attendance.config"].search([], limit=1))
+
+    devices_can_connect = fields.Integer(string="Devices Can Connect", default=1)
+    total_connected_devices = fields.Integer(string="Total Connected Devices", compute="_compute_total_connected_devices", store=True)
+    connected_device_line_ids = fields.One2many("face.attendance.connected.device", "device_id", string="Connected Device IDs")
+    device_try_to_connect = fields.Char(string="Device Trying to Connect")
 
     _sql_constraints = [("employee_device_unique", "unique(employee_id, device_uid)", "This device is already registered for the employee.")]
 
-    @api.constrains("device_type", "employee_id", "device_uid")
+    @api.depends("connected_device_line_ids")
+    def _compute_total_connected_devices(self):
+        for record in self:
+            record.total_connected_devices = len(record.connected_device_line_ids)
+
+    @api.constrains("devices_can_connect", "connected_device_line_ids")
+    def _check_devices_can_connect(self):
+        for record in self:
+            if record.devices_can_connect < len(record.connected_device_line_ids):
+                raise UserError(_("Devices Can Connect cannot be less than the Total Connected Devices."))
+
+    @api.onchange("devices_can_connect", "connected_device_line_ids")
+    def _onchange_devices_can_connect(self):
+        if self.devices_can_connect < len(self.connected_device_line_ids):
+            return {
+                "warning": {
+                    "title": _("Warning"),
+                    "message": _("Devices Can Connect cannot be less than the Total Connected Devices. Please increase the limit or remove some connected devices.")
+                }
+            }
+
+    @api.constrains("device_type", "employee_id")
     def _check_employee_device(self):
         for record in self:
             if record.device_type == "employee" and (not record.employee_id or not record.device_uid):
@@ -334,7 +373,7 @@ class FaceAttendanceDevice(models.Model):
 class FaceAttendanceLog(models.Model):
     _name = "face.attendance.log"
     _description = "Face Attendance Audit Log"
-    _order = "create_date desc"
+    _order = "punch_time desc"
 
     employee_id = fields.Many2one("hr.employee", index=True, ondelete="cascade")
     attendance_id = fields.Many2one("hr.attendance", index=True, ondelete="set null")
@@ -350,9 +389,12 @@ class FaceAttendanceLog(models.Model):
     liveness_passed = fields.Boolean(default=False, index=True)
     liveness_score = fields.Float()
     spoof_score = fields.Float()
-    accepted = fields.Boolean(default=False, index=True)
+    accepted = fields.Boolean(default=True, index=True)
     failure_reason = fields.Char()
     raw_payload = fields.Text()
+    is_sync = fields.Boolean(string="SYNC", default=False, index=True)
+
+    punch_time = fields.Datetime(string="Punch Time", default=fields.Datetime.now, index=True)
 
     employee_odoo_id = fields.Integer(string="Employee ID", compute="_compute_employee_display", store=True)
     employee_name = fields.Char(string="Employee Name", compute="_compute_employee_display", store=True)
@@ -371,17 +413,21 @@ class FaceAttendanceLog(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        for vals in vals_list:
+            if not vals.get("punch_time") and vals.get("create_date"):
+                vals["punch_time"] = vals["create_date"]
+
         logs = super().create(vals_list)
         for log in logs.filtered(lambda item: item.employee_id and item.accepted):
             open_attendance = self.env["hr.attendance"].search(
                 [("employee_id", "=", log.employee_id.id), ("check_out", "=", False)], limit=1, order="check_in desc"
             )
             if open_attendance:
-                open_attendance.write({"check_out": log.create_date})
+                open_attendance.write({"check_out": log.punch_time, "out_mode": "pi_smart_punch"})
                 log.write({"attendance_id": open_attendance.id, "punch_type": "check_out"})
             else:
                 attendance = self.env["hr.attendance"].create(
-                    {"employee_id": log.employee_id.id, "check_in": log.create_date, "recognition_confidence": log.match_score, "recognition_method": "face", "face_device_uid": log.device_uid, "face_log_id": log.id}
+                    {"employee_id": log.employee_id.id, "check_in": log.punch_time, "recognition_confidence": log.match_score, "recognition_method": "face", "face_device_uid": log.device_uid, "face_log_id": log.id, "in_mode": "pi_smart_punch"}
                 )
                 log.write({"attendance_id": attendance.id, "punch_type": "check_in"})
         return logs
@@ -392,4 +438,4 @@ class FaceAttendanceLog(models.Model):
         now = fields.Datetime.now()
         open_attendances = self.env["hr.attendance"].search([("check_out", "=", False), ("check_in", "<", now.replace(hour=0, minute=0, second=0, microsecond=0))])
         for attendance in open_attendances:
-            attendance.write({"check_out": now.replace(hour=23, minute=59, second=59, microsecond=0)})
+            attendance.write({"check_out": now.replace(hour=23, minute=59, second=59, microsecond=0), "out_mode": "pi_smart_punch"})

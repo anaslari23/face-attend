@@ -11,3 +11,10 @@ class HrAttendance(models.Model):
     )
     face_device_uid = fields.Char()
     face_log_id = fields.Many2one("face.attendance.log", ondelete="set null")
+
+    in_mode = fields.Selection(selection_add=[
+            ('pi_smart_punch', 'Pi Smart Punch')
+    ])
+    out_mode = fields.Selection(selection_add=[
+        ('pi_smart_punch', 'Pi Smart Punch')
+    ])

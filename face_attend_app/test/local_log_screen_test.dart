@@ -99,7 +99,7 @@ void main() {
     // 2. CALENDAR VIEW
     // Tap on the Calendar view tab
     await tester.tap(find.text('Calendar'));
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     // Verify calendar elements are displayed
     expect(find.text('Mo'), findsOneWidget);
@@ -113,7 +113,7 @@ void main() {
     // 3. KANBAN VIEW
     // Tap on the Kanban view tab
     await tester.tap(find.text('Kanban'));
-    await tester.pumpAndSettle();
+    await tester.pump();
 
     // Verify Kanban columns are displayed
     expect(find.text('Offline Queue'), findsAtLeastNWidgets(1));

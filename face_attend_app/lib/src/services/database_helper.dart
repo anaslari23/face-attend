@@ -24,7 +24,8 @@ class DatabaseHelper {
 
   Future<Database> _initDatabase() async {
     // If desktop (macOS/Windows/Linux) in debug or CLI mode, initialize sqflite ffi if needed
-    if (!kIsWeb && (Platform.isMacOS || Platform.isLinux || Platform.isWindows)) {
+    if (!kIsWeb &&
+        (Platform.isMacOS || Platform.isLinux || Platform.isWindows)) {
       sqfliteFfiInit();
       databaseFactory = databaseFactoryFfi;
     }
@@ -34,11 +35,7 @@ class DatabaseHelper {
 
     debugPrint('Initializing SQLite database at: $path');
 
-    return await openDatabase(
-      path,
-      version: _dbVersion,
-      onCreate: _onCreate,
-    );
+    return await openDatabase(path, version: _dbVersion, onCreate: _onCreate);
   }
 
   Future<void> _onCreate(Database db, int version) async {
@@ -91,13 +88,6 @@ class DatabaseHelper {
         value TEXT NOT NULL
       )
     ''');
-
-    // Default secret token if not set
-    await db.insert(
-      'app_settings',
-      {'key': 'secret_admin_token', 'value': 'ADMIN123'},
-      conflictAlgorithm: ConflictAlgorithm.ignore,
-    );
   }
 
   // ===========================================================================
@@ -154,10 +144,7 @@ class DatabaseHelper {
     final db = await database;
     await db.update(
       'punch_logs',
-      {
-        'is_synced': isSynced ? 1 : 0,
-        'sync_error': syncError,
-      },
+      {'is_synced': isSynced ? 1 : 0, 'sync_error': syncError},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -196,19 +183,15 @@ class DatabaseHelper {
     required List<List<double>> adaptiveEmbeddings,
   }) async {
     final db = await database;
-    await db.insert(
-      'face_embeddings',
-      {
-        'employee_id': employeeId,
-        'employee_name': employeeName,
-        'department': department,
-        'avatar_write_date': avatarWriteDate,
-        'primary_embedding_json': jsonEncode(primaryEmbedding),
-        'adaptive_embeddings_json': jsonEncode(adaptiveEmbeddings),
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('face_embeddings', {
+      'employee_id': employeeId,
+      'employee_name': employeeName,
+      'department': department,
+      'avatar_write_date': avatarWriteDate,
+      'primary_embedding_json': jsonEncode(primaryEmbedding),
+      'adaptive_embeddings_json': jsonEncode(adaptiveEmbeddings),
+      'updated_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<List<Map<String, dynamic>>> getFaceRecords() async {
@@ -220,12 +203,20 @@ class DatabaseHelper {
         'employee_name': row['employee_name'] as String,
         'department': row['department'] as String?,
         'avatar_write_date': row['avatar_write_date'] as String,
-        'primary_embedding': (jsonDecode(row['primary_embedding_json'] as String) as List<dynamic>)
-            .map((v) => (v as num).toDouble())
-            .toList(),
-        'adaptive_embeddings': (jsonDecode(row['adaptive_embeddings_json'] as String) as List<dynamic>)
-            .map((list) => (list as List<dynamic>).map((v) => (v as num).toDouble()).toList())
-            .toList(),
+        'primary_embedding':
+            (jsonDecode(row['primary_embedding_json'] as String)
+                    as List<dynamic>)
+                .map((v) => (v as num).toDouble())
+                .toList(),
+        'adaptive_embeddings':
+            (jsonDecode(row['adaptive_embeddings_json'] as String)
+                    as List<dynamic>)
+                .map(
+                  (list) => (list as List<dynamic>)
+                      .map((v) => (v as num).toDouble())
+                      .toList(),
+                )
+                .toList(),
       };
     }).toList();
   }
@@ -241,26 +232,28 @@ class DatabaseHelper {
 
   Future<void> saveSession(Map<String, dynamic> sessionMap) async {
     final db = await database;
-    await db.insert(
-      'app_sessions',
-      {
-        'key': 'active_session',
-        'base_url': sessionMap['baseUrl'] ?? '',
-        'db': sessionMap['db'] ?? '',
-        'token': sessionMap['token'] ?? '',
-        'device_id': sessionMap['deviceId'] ?? '',
-        'device_name': sessionMap['deviceName'] ?? '',
-        'generated_device_id': sessionMap['generatedDeviceId'],
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
+    await db.insert('app_sessions', {
+      'key': 'active_session',
+      'base_url': sessionMap['baseUrl'] ?? '',
+      'db': sessionMap['db'] ?? '',
+      'token': sessionMap['token'] ?? '',
+      'device_id': sessionMap['deviceId'] ?? '',
+      'device_name': sessionMap['deviceName'] ?? '',
+      'generated_device_id': sessionMap['generatedDeviceId'],
+      'updated_at': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+    debugPrint(
+      'SQLite: Saved active session for device: ${sessionMap['deviceName']}',
     );
-    debugPrint('SQLite: Saved active session for device: ${sessionMap['deviceName']}');
   }
 
   Future<Map<String, dynamic>?> getSession() async {
     final db = await database;
-    final rows = await db.query('app_sessions', where: 'key = ?', whereArgs: ['active_session']);
+    final rows = await db.query(
+      'app_sessions',
+      where: 'key = ?',
+      whereArgs: ['active_session'],
+    );
     if (rows.isEmpty) return null;
     final row = rows.first;
     return {
@@ -275,7 +268,11 @@ class DatabaseHelper {
 
   Future<void> clearSession() async {
     final db = await database;
-    await db.delete('app_sessions', where: 'key = ?', whereArgs: ['active_session']);
+    await db.delete(
+      'app_sessions',
+      where: 'key = ?',
+      whereArgs: ['active_session'],
+    );
   }
 
   // ===========================================================================
@@ -284,20 +281,23 @@ class DatabaseHelper {
 
   Future<String> getSecretToken() async {
     final db = await database;
-    final rows = await db.query('app_settings', where: 'key = ?', whereArgs: ['secret_admin_token']);
+    final rows = await db.query(
+      'app_settings',
+      where: 'key = ?',
+      whereArgs: ['secret_admin_token'],
+    );
     if (rows.isNotEmpty) {
       return rows.first['value'] as String;
     }
-    return 'ADMIN123';
+    return '';
   }
 
   Future<void> setSecretToken(String token) async {
     final db = await database;
-    await db.insert(
-      'app_settings',
-      {'key': 'secret_admin_token', 'value': token},
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    await db.insert('app_settings', {
+      'key': 'secret_admin_token',
+      'value': token,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   // ===========================================================================
@@ -324,7 +324,7 @@ class DatabaseHelper {
         'synced_logs': logs.where((l) => l['isSynced'] == true).length,
         'pending_logs': logs.where((l) => l['isSynced'] == false).length,
         'total_indexed_employees': faces.length,
-      }
+      },
     };
   }
 
@@ -337,22 +337,32 @@ class DatabaseHelper {
       final db = await database;
 
       // 1. Check if punch_logs is empty, and migrate face_attend_punch_logs.json if present
-      final countResult = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM punch_logs'));
+      final countResult = Sqflite.firstIntValue(
+        await db.rawQuery('SELECT COUNT(*) FROM punch_logs'),
+      );
       if (countResult == 0) {
         final docsDir = await getApplicationDocumentsDirectory();
         final jsonFile = File('${docsDir.path}/face_attend_punch_logs.json');
         if (await jsonFile.exists()) {
           final content = await jsonFile.readAsString();
           final decoded = jsonDecode(content) as List<dynamic>;
-          debugPrint('SQLite Migration: Migrating ${decoded.length} legacy JSON logs to SQLite...');
+          debugPrint(
+            'SQLite Migration: Migrating ${decoded.length} legacy JSON logs to SQLite...',
+          );
           for (final item in decoded) {
             final m = item as Map<String, dynamic>;
-            final id = m['id'] as String? ?? 'log_${DateTime.now().millisecondsSinceEpoch}';
-            final ts = DateTime.tryParse(m['timestamp'] as String? ?? '') ?? DateTime.now();
+            final id =
+                m['id'] as String? ??
+                'log_${DateTime.now().millisecondsSinceEpoch}';
+            final ts =
+                DateTime.tryParse(m['timestamp'] as String? ?? '') ??
+                DateTime.now();
             final empName = m['employeeName'] as String? ?? 'Unknown';
             final isSynced = m['isSynced'] as bool? ?? false;
             final syncError = m['syncError'] as String?;
-            final payload = Map<String, dynamic>.from(m['payload'] as Map? ?? {});
+            final payload = Map<String, dynamic>.from(
+              m['payload'] as Map? ?? {},
+            );
 
             await insertPunchLog(
               id: id,
@@ -368,15 +378,21 @@ class DatabaseHelper {
       }
 
       // 2. Migrate cached face embeddings if present in JSON file
-      final faceCount = Sqflite.firstIntValue(await db.rawQuery('SELECT COUNT(*) FROM face_embeddings'));
+      final faceCount = Sqflite.firstIntValue(
+        await db.rawQuery('SELECT COUNT(*) FROM face_embeddings'),
+      );
       if (faceCount == 0) {
         final supportDir = await getApplicationSupportDirectory();
-        final embeddingFile = File('${supportDir.path}/face_attend_local_embeddings.json');
+        final embeddingFile = File(
+          '${supportDir.path}/face_attend_local_embeddings.json',
+        );
         if (await embeddingFile.exists()) {
           final content = await embeddingFile.readAsString();
           final payload = jsonDecode(content) as Map<String, dynamic>;
           final records = payload['records'] as List<dynamic>? ?? [];
-          debugPrint('SQLite Migration: Migrating ${records.length} legacy face embedding records to SQLite...');
+          debugPrint(
+            'SQLite Migration: Migrating ${records.length} legacy face embedding records to SQLite...',
+          );
           for (final rec in records) {
             final r = rec as Map<String, dynamic>;
             final empId = r['employee_id'] as int;
@@ -387,7 +403,11 @@ class DatabaseHelper {
                 .map((v) => (v as num).toDouble())
                 .toList();
             final adaptive = (r['adaptive_embeddings'] as List<dynamic>? ?? [])
-                .map((list) => (list as List<dynamic>).map((v) => (v as num).toDouble()).toList())
+                .map(
+                  (list) => (list as List<dynamic>)
+                      .map((v) => (v as num).toDouble())
+                      .toList(),
+                )
                 .toList();
 
             await saveFaceRecord(

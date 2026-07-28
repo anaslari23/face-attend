@@ -45,17 +45,15 @@ class _SecretTokenDialogState extends State<SecretTokenDialog> {
     final validToken = await DatabaseHelper.instance.getSecretToken();
     if (!mounted) return;
 
-    if (input == validToken || input == 'ADMIN123' || input == 'SECRET2026') {
+    if (validToken.isNotEmpty && input == validToken) {
       Navigator.of(context).pop(); // Close dialog
       Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => const DatabaseInspectorScreen(),
-        ),
+        MaterialPageRoute(builder: (_) => const DatabaseInspectorScreen()),
       );
     } else {
       setState(() {
         _checking = false;
-        _error = 'Invalid secret token. Try ADMIN123';
+        _error = 'Invalid secret token';
       });
     }
   }
@@ -100,10 +98,7 @@ class _SecretTokenDialogState extends State<SecretTokenDialog> {
                     ),
                     Text(
                       'Enter Developer/Admin Security Token',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey,
-                      ),
+                      style: TextStyle(fontSize: 11, color: Colors.grey),
                     ),
                   ],
                 ),
@@ -117,7 +112,7 @@ class _SecretTokenDialogState extends State<SecretTokenDialog> {
             autofocus: true,
             style: const TextStyle(color: Colors.white, letterSpacing: 1.5),
             decoration: InputDecoration(
-              hintText: 'Enter secret token (e.g. ADMIN123)',
+              hintText: 'Enter administrator token',
               hintStyle: TextStyle(color: Colors.grey.shade600, fontSize: 13),
               filled: true,
               fillColor: Colors.black26,
@@ -147,7 +142,10 @@ class _SecretTokenDialogState extends State<SecretTokenDialog> {
             children: [
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(color: Colors.grey),
+                ),
               ),
               const SizedBox(width: 8),
               ElevatedButton(
@@ -158,13 +156,19 @@ class _SecretTokenDialogState extends State<SecretTokenDialog> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
                 ),
                 child: _checking
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.black),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.black,
+                        ),
                       )
                     : const Text(
                         'Unlock View',

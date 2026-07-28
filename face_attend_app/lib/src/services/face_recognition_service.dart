@@ -104,7 +104,8 @@ class FaceRecognitionService {
     required DeviceOrientation deviceOrientation,
   }) async {
     final detector = await _readyDetector();
-    const maxDim = 640;
+    // Fast camera gating only: the final ArcFace embedding still uses the full captured image.
+    const maxDim = 320;
     final rotation = mp.rotationForFrame(
       width: image.width,
       height: image.height,

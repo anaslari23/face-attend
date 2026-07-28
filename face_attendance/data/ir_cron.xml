@@ -1,0 +1,22 @@
+<odoo>
+    <record id="ir_cron_face_attendance_template_worker" model="ir.cron">
+        <field name="name">Face Attendance: Generate Templates</field>
+        <field name="model_id" ref="model_face_attendance_template"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_generate_templates()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">minutes</field>
+        <field name="numbercall">-1</field>
+        <field name="active">True</field>
+    </record>
+    <record id="ir_cron_face_attendance_missed_checkout" model="ir.cron">
+        <field name="name">Face Attendance: Close Prior-Day Attendances</field>
+        <field name="model_id" ref="model_face_attendance_log"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_auto_checkout()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="numbercall">-1</field>
+        <field name="active">True</field>
+    </record>
+</odoo>

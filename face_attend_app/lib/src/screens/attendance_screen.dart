@@ -23,10 +23,11 @@ class AttendanceScreen extends StatefulWidget {
 }
 
 class _AttendanceScreenState extends State<AttendanceScreen> {
-  static const _analysisInterval = Duration(milliseconds: 250);
+  static const _analysisInterval = Duration(milliseconds: 80);
   static const _detectionWatchdogTimeout = Duration(seconds: 2);
-  static const _stableFrameTarget = 5;
+  static const _stableFrameTarget = 2;
   static const _employeePunchCooldown = Duration(minutes: 2);
+  static const _indexSyncInterval = Duration(minutes: 5);
 
   final _faceService = FaceRecognitionService();
   final _deviceService = DeviceService();
@@ -41,7 +42,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   DateTime _lastAnalysisAt = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _lastValidFrameAt = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _detectionWatchdog;
+  Timer? _indexSyncTimer;
   bool _processingFrame = false;
+  bool _syncingIndex = false;
   bool _autoCaptureStarted = false;
   int _stableFrames = 0;
   int _scanGeneration = 0;
@@ -98,28 +101,13 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       );
       await _camera!.initialize();
       await _faceService.initialize();
-      if (mounted) {
-        setState(() {
-          _message = 'Syncing employee faces';
-          _scannerState = _ScannerState.loading;
-        });
+      final cachedIndex = await _matcher.readyIndex();
+      if (cachedIndex.records.isNotEmpty) {
+        await _activateScanner();
+        unawaited(_refreshIndexInBackground());
+        return;
       }
-      final sync = await _matcher.sync();
-      if (sync.indexedEmployees == 0) {
-        throw StateError(
-          sync.failures.isEmpty
-              ? 'No employee avatars found in Odoo'
-              : 'No usable employee faces found. ${sync.failures.first}',
-        );
-      }
-      await _startFaceDetection();
-      if (!mounted) return;
-      setState(() {
-        _message = 'Looking for a face';
-        _scannerState = _ScannerState.detecting;
-        _lastValidFrameAt = DateTime.now();
-      });
-      _startDetectionWatchdog();
+      await _syncIndexNow();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -132,12 +120,73 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   void dispose() {
     _detectionWatchdog?.cancel();
+    _indexSyncTimer?.cancel();
     if (_camera?.value.isStreamingImages == true) {
       _camera?.stopImageStream();
     }
     _camera?.dispose();
     _faceService.close();
     super.dispose();
+  }
+
+  Future<void> _refreshIndexInBackground() async {
+    if (_syncingIndex) return;
+    _syncingIndex = true;
+    try {
+      await _matcher.sync();
+    } catch (_) {
+      // The current verified index remains active until the next successful delta sync.
+    } finally {
+      _syncingIndex = false;
+    }
+  }
+
+  Future<void> _syncIndexNow() async {
+    if (_syncingIndex) return;
+    _syncingIndex = true;
+    if (mounted) {
+      setState(() {
+        _message = 'Preparing employee index';
+        _scannerState = _ScannerState.loading;
+      });
+    }
+    try {
+      final sync = await _matcher.sync();
+      if (sync.indexedEmployees == 0) {
+        throw StateError('Employee index is preparing. Try again shortly.');
+      }
+      await _activateScanner();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _message = error.toString().replaceAll('uri=', 'url=');
+        _scannerState = _ScannerState.failed;
+      });
+    } finally {
+      _syncingIndex = false;
+    }
+  }
+
+  Future<void> _activateScanner() async {
+    await _startFaceDetection();
+    _indexSyncTimer ??= Timer.periodic(_indexSyncInterval, (_) {
+      unawaited(_refreshIndexInBackground());
+    });
+    if (!mounted) return;
+    setState(() {
+      _message = 'Looking for a face';
+      _scannerState = _ScannerState.detecting;
+      _lastValidFrameAt = DateTime.now();
+    });
+    _startDetectionWatchdog();
+  }
+
+  Future<void> _retryScanner() async {
+    if ((await _matcher.readyIndex()).records.isEmpty) {
+      await _syncIndexNow();
+    } else {
+      _resetDetectionState();
+    }
   }
 
   Future<void> _startFaceDetection() async {
@@ -275,7 +324,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       final deviceId = widget.session.deviceId.isNotEmpty
           ? widget.session.deviceId
           : device.id;
-      final liveAccepted = match.livenessPassed;
+      // A rejected similarity match is not a liveness failure. Preserve the
+      // actual match reason instead of reporting every miss as spoofing.
+      final liveAccepted = match.matched ? match.livenessPassed : true;
       final accepted =
           match.matched && match.employeeId != null && liveAccepted;
       final inCooldown = accepted && _isEmployeeInCooldown(match.employeeId!);
@@ -706,7 +757,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                     onPressed: _canScan
                         ? _scannerState == _ScannerState.paused ||
                                   _scannerState == _ScannerState.failed
-                              ? () => _resetDetectionState()
+                              ? _retryScanner
                               : _scan
                         : null,
                     child: _busy
@@ -726,7 +777,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                               Text(
                                 _scannerState == _ScannerState.paused ||
                                         _scannerState == _ScannerState.failed
-                                    ? 'Scan Again'
+                                    ? 'Sync Index'
                                     : 'Scan Now',
                                 style: const TextStyle(
                                   fontSize: 16,

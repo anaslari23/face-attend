@@ -22,8 +22,13 @@ venv/
 .pub/
 build/
 coverage/
+face_attend_app/android/key.properties
+face_attend_app/android/app/*.jks
+face_attend_app/android/app/*.keystore
 
 # Odoo / local runtime
 *.log
 *.sqlite3
 data/
+!face_attendance/data/
+!face_attendance/data/ir_cron.xml

@@ -201,3 +201,59 @@ class ScannerEmployee {
     );
   }
 }
+
+class ScannerIndexManifest {
+  const ScannerIndexManifest({
+    required this.modelVersion,
+    required this.dimensions,
+    required this.revision,
+    required this.threshold,
+    required this.changes,
+  });
+
+  final String modelVersion;
+  final int dimensions;
+  final int revision;
+  final double threshold;
+  final List<ScannerIndexChange> changes;
+
+  factory ScannerIndexManifest.fromJson(Map<String, dynamic> json) {
+    return ScannerIndexManifest(
+      modelVersion: json['model_version'] as String,
+      dimensions: (json['dimensions'] as num).toInt(),
+      revision: (json['revision'] as num).toInt(),
+      threshold: (json['threshold'] as num).toDouble(),
+      changes: (json['changes'] as List<dynamic>? ?? [])
+          .map(
+            (item) => ScannerIndexChange.fromJson(item as Map<String, dynamic>),
+          )
+          .toList(),
+    );
+  }
+}
+
+class ScannerIndexChange {
+  const ScannerIndexChange({
+    required this.employeeId,
+    required this.name,
+    required this.revision,
+    required this.enabled,
+    this.department,
+  });
+
+  final int employeeId;
+  final String? name;
+  final String? department;
+  final int revision;
+  final bool enabled;
+
+  factory ScannerIndexChange.fromJson(Map<String, dynamic> json) {
+    return ScannerIndexChange(
+      employeeId: (json['employee_id'] as num).toInt(),
+      name: json['name'] as String?,
+      department: json['department'] as String?,
+      revision: (json['revision'] as num).toInt(),
+      enabled: json['enabled'] == true,
+    );
+  }
+}

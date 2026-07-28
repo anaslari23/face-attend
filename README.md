@@ -2,7 +2,7 @@
 
 Phone-only shared-scanner face attendance for Odoo.
 
-Odoo is the system of record for employees, employee avatars, scanner devices, attendance records, and audit logs. The Flutter scanner app runs face detection and ArcFace matching locally on the phone, then sends only the attendance result back to Odoo.
+Odoo is the system of record for employees, encrypted face templates, scanner devices, attendance records, and audit logs. The Flutter scanner app runs face detection and ArcFace matching locally on the phone, then sends only the attendance result back to Odoo.
 
 There is no FastAPI middleware, PostgreSQL, or pgvector requirement in the active deployment flow.
 
@@ -14,14 +14,13 @@ There is no FastAPI middleware, PostgreSQL, or pgvector requirement in the activ
 ## Runtime Flow
 
 1. HR/admin creates employees in Odoo and uploads a real single-face employee avatar.
-2. Odoo exposes active employees and avatars through `/face_attendance/scanner/employees`.
-3. The scanner phone downloads the employee list.
-4. The phone generates and caches 512-d ArcFace embeddings locally from the Odoo avatars.
-5. During attendance scan, the phone detects exactly one face, creates a live ArcFace embedding, and matches locally.
-6. If the match passes threshold and ambiguity checks, the phone calls `/face_attendance/punch`.
-7. Odoo creates or updates `hr.attendance` and records a `face.attendance.log` audit entry.
+2. Odoo's template worker generates and encrypts a 512-d ArcFace embedding once per new or changed avatar.
+3. The scanner phone loads its verified local index immediately, then downloads only changed binary vectors through `/face_attendance/scanner/index/*`.
+4. During attendance scan, the phone detects exactly one face, creates a live ArcFace embedding, and matches locally.
+5. If the match passes threshold and ambiguity checks, the phone calls `/face_attendance/punch`.
+6. Odoo creates or updates `hr.attendance` and records a `face.attendance.log` audit entry.
 
-Raw live scan photos are not uploaded to Odoo by default. Employee avatar images stay in Odoo. Face embeddings are cached on the scanner phone.
+Raw live scan photos are not uploaded to Odoo. Employee avatars stay in Odoo; encrypted templates are held in Odoo and a verified index is cached on the scanner phone.
 
 ## Odoo Setup
 
@@ -87,7 +86,16 @@ In **Face Attendance > Devices**:
 
 The setup code becomes the scanner token stored on the phone.
 
-### 5. Add Employees
+### 5. Configure Template Worker and Backfill
+
+Set these server-side values outside source control:
+
+- `FACE_ATTENDANCE_TEMPLATE_KEY`: a valid Fernet key used to encrypt templates at rest.
+- Odoo system parameter `face_attendance.template_worker_url`: the internal worker URL. The worker must implement `POST /v1/templates`, accept `employee_id`, `model_version`, and `avatar_base64`, and return `model_version`, `embedding_b64` (512 big-endian float32 values), and optional `quality_score`.
+
+Open **Face Attendance > Configuration** and select **Queue Template Backfill**. The existing one-minute cron processes ten queued avatars per run, so schedule this initial action overnight for large rosters. New and changed avatars queue automatically.
+
+### 6. Add Employees
 
 For each employee:
 
@@ -96,7 +104,7 @@ For each employee:
 3. Open the **Face Attendance** tab.
 4. Confirm `Face Registered` is checked, or click **Prepare Avatar For Scanner**.
 
-New or updated avatars become available to scanner phones through the employee sync endpoint. The scanner phone creates the actual ArcFace embedding when it syncs employees.
+New or updated avatars become available to scanner phones after the template worker marks their central template ready. A new scanner waits for this central index rather than generating embeddings on the phone.
 
 Avoid initials, placeholder images, group photos, side-face photos, blurry photos, or heavily cropped faces.
 
@@ -121,14 +129,15 @@ The scanner phone must be able to reach the Odoo server over the local network o
 ## Implemented Odoo API
 
 - `POST /face_attendance/scanner/setup`
-- `GET /face_attendance/scanner/employees`
+- `GET /face_attendance/scanner/index/manifest`
+- `GET /face_attendance/scanner/index/chunk`
 - `GET /face_attendance/status`
 - `POST /face_attendance/punch`
 - `POST /face_attendance/login` legacy employee-device endpoint
 - `POST /face_attendance/enroll` disabled legacy endpoint
 - `GET /face_attendance/template` disabled legacy endpoint
 
-The active shared-scanner flow uses setup, employees, status, and punch.
+The active shared-scanner flow uses setup, scanner index, status, and punch.
 
 ## Deployment Requirements
 
@@ -137,6 +146,7 @@ Server side:
 - Odoo with `hr` and `hr_attendance`
 - `face_attendance` addon installed
 - Network access from scanner phones to Odoo
+- An internal template worker and a configured Fernet key
 
 Phone side:
 
@@ -145,7 +155,13 @@ Phone side:
 - Enough memory to run the bundled ArcFace ONNX model
 - Flutter scanner APK installed
 
-No separate ML server is required.
+The template worker is required for enterprise scanner provisioning; it generates avatar embeddings centrally, while live scans stay on the phone.
+
+## CI/CD
+
+GitHub Actions verifies every push and pull request with Flutter analysis, tests, and a debug APK build. Pushing a `v*` tag additionally builds a signed release APK and distributes it through Firebase App Distribution.
+
+Configure these GitHub environment secrets on `production` before creating a release tag: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`, `ANDROID_STORE_PASSWORD`, `FIREBASE_APP_ID`, `FIREBASE_SERVICE_ACCOUNT`, and `FIREBASE_TESTER_GROUP`. The app's release keystore and all secrets stay out of this repository.
 
 ## Validation
 

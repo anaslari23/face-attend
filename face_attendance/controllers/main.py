@@ -1,6 +1,7 @@
 import json
 import logging
 import secrets
+import struct
 from datetime import timedelta
 
 # pyrefly: ignore [missing-import]
@@ -162,9 +163,95 @@ class FaceAttendanceController(http.Controller):
             {
                 "device": self._device_payload(device),
                 "model_version": model_version,
-                "threshold": float(self._config("face_attendance.match_threshold", "0.70")),
+                "threshold": device.config_id.confidence_threshold if device.config_id else 0.70,
                 "employees": payload,
             }
+        )
+
+    @http.route("/face_attendance/scanner/index/manifest", type="http", auth="none", methods=["GET"], csrf=False)
+    def scanner_index_manifest(self, **kwargs):
+        device, error = self._require_device()
+        if error:
+            return error
+        if device.device_type != "scanner":
+            return self._json_response({"error": "scanner_device_required"}, status=403)
+
+        try:
+            since = max(0, int(request.httprequest.args.get("since", "0")))
+        except ValueError:
+            return self._json_response({"error": "invalid_index_revision"}, status=400)
+        state = request.env["face.attendance.index.state"].sudo().search([("name", "=", "default")], limit=1)
+        revision = state.revision if state else 0
+        etag = '"face-index-%s"' % revision
+        if since == revision or request.httprequest.headers.get("If-None-Match") == etag:
+            return request.make_response(b"", headers=[("ETag", etag)], status=304)
+
+        templates = request.env["face.attendance.template"].sudo().search(
+            [("revision", ">", since)], order="revision, id"
+        )
+        changes = []
+        for template in templates:
+            enabled = bool(
+                template.active
+                and template.state == "ready"
+                and template.employee_id
+                and template.employee_id.active
+            )
+            changes.append(
+                {
+                    "employee_id": template.employee_odoo_id,
+                    "name": template.employee_name,
+                    "department": template.employee_id.department_id.name if enabled and template.employee_id.department_id else None,
+                    "revision": template.revision,
+                    "enabled": enabled,
+                }
+            )
+        config = device.config_id
+        return self._json_response(
+            {
+                "model_version": "arcface-w600k-r50-align-v3",
+                "dimensions": 512,
+                "revision": revision,
+                "threshold": config.confidence_threshold if config else 0.70,
+                "changes": changes,
+            },
+            status=200,
+        )
+
+    @http.route("/face_attendance/scanner/index/chunk", type="http", auth="none", methods=["GET"], csrf=False)
+    def scanner_index_chunk(self, **kwargs):
+        device, error = self._require_device()
+        if error:
+            return error
+        if device.device_type != "scanner":
+            return self._json_response({"error": "scanner_device_required"}, status=403)
+        raw_ids = request.httprequest.args.get("ids", "")
+        try:
+            employee_ids = sorted({int(value) for value in raw_ids.split(",") if value})
+        except ValueError:
+            return self._json_response({"error": "invalid_employee_ids"}, status=400)
+        if not employee_ids or len(employee_ids) > 250:
+            return self._json_response({"error": "request_between_1_and_250_employee_ids"}, status=400)
+        templates = request.env["face.attendance.template"].sudo().search(
+            [
+                ("employee_odoo_id", "in", employee_ids),
+                ("active", "=", True),
+                ("state", "=", "ready"),
+                ("employee_id.active", "=", True),
+            ],
+            order="employee_odoo_id",
+        )
+        payload = bytearray(struct.pack("!4sI", b"FAI1", len(templates)))
+        for template in templates:
+            embedding = template.embedding_bytes()
+            payload.extend(struct.pack("!I", template.employee_odoo_id))
+            payload.extend(embedding)
+        return request.make_response(
+            bytes(payload),
+            headers=[
+                ("Content-Type", "application/octet-stream"),
+                ("Cache-Control", "no-store"),
+            ],
         )
 
     @http.route("/face_attendance/login", type="http", auth="none", methods=["POST"], csrf=False)
@@ -255,8 +342,9 @@ class FaceAttendanceController(http.Controller):
             accepted = bool(body.get("accepted"))
             matched_employee_id = body.get("matched_employee_id")
             match_score = float(body.get("match_score") or 0.0)
-            threshold = float(body.get("threshold") or self._config("face_attendance.match_threshold", "0.70"))
-            device_id = body.get("device_id") or device.device_uid
+            config = device.config_id
+            threshold = config.confidence_threshold if config else 0.70
+            device_id = device.device_uid
             app_version = body.get("app_version")
             failure_reason = body.get("failure_reason")
             second_best_confidence = body.get("second_best_confidence")
@@ -313,7 +401,8 @@ class FaceAttendanceController(http.Controller):
             if accepted and not liveness_passed and not failure_reason:
                 failure_reason = "liveness_failed"
 
-            log_accepted = bool(employee) and accepted and match_score >= threshold and liveness_passed
+            liveness_ok = liveness_passed or not (config and config.liveness_required)
+            log_accepted = bool(employee) and accepted and match_score >= threshold and liveness_ok
             if accepted and employee and match_score < threshold and not failure_reason:
                 failure_reason = "below_threshold"
 
@@ -357,10 +446,9 @@ class FaceAttendanceController(http.Controller):
                     "attendance": self._status_payload(employee),
                 }
             )
-        except Exception as e:
-            _logger.exception("Punch failed: %s", e)
-            import traceback
-            return self._json_response({"error": str(e), "traceback": traceback.format_exc()}, status=500)
+        except Exception:
+            _logger.exception("Punch failed")
+            return self._json_response({"error": "punch_failed"}, status=500)
 
     def _device_payload(self, device):
         return {

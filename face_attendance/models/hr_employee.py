@@ -40,9 +40,16 @@ class HrEmployee(models.Model):
         result = super().write(vals)
         if {"image_1920", "name"} & set(vals):
             self._auto_prepare_face_for_scanner([vals])
+        if "active" in vals and not vals["active"]:
+            templates = self.env["face.attendance.template"]
+            for employee in self:
+                templates.sudo().disable_for_employee(employee.id, employee.name)
         return result
 
     def unlink(self):
+        templates = self.env["face.attendance.template"]
+        for employee in self:
+            templates.sudo().disable_for_employee(employee.id, employee.name)
         result = super().unlink()
         return result
 
@@ -87,12 +94,13 @@ class HrEmployee(models.Model):
 
             employee.with_context(skip_face_auto_sync=True).write(
                 {
-                    "face_registered": True,
+                    "face_registered": False,
                     "face_registered_date": fields.Datetime.now(),
                     "face_enrollment_count": employee.face_enrollment_count + 1,
                     "face_sync_error": False,
                 }
             )
+            self.env["face.attendance.template"].sudo().mark_pending(employee, employee._avatar_image_bytes())
 
         return True
 

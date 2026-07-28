@@ -1,5 +1,5 @@
 import 'dart:convert';
-
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../models/session.dart';
@@ -30,7 +30,7 @@ class OdooFaceAttendanceClient {
       );
     }
     final dbs = <String>[];
-    
+
     void addDbValue(dynamic val) {
       if (val is List) {
         for (final item in val) {
@@ -55,7 +55,6 @@ class OdooFaceAttendanceClient {
     return dbs.toSet().toList();
   }
 
-
   Future<Map<String, dynamic>> getPublicConfig() async {
     return _get('/public/config', authenticated: false);
   }
@@ -65,23 +64,19 @@ class OdooFaceAttendanceClient {
     required String setupCode,
     required String deviceId,
   }) async {
-    final requestBody = {
-      'setup_code': setupCode,
-      'device_try_to_connect': deviceId,
-    };
-    print(
-      '[OdooFaceAttendanceClient] setupScanner Request: ${jsonEncode(requestBody)}',
-    );
+    if (!kDebugMode && _uri('').scheme != 'https') {
+      throw const FaceAttendanceApiException(
+        statusCode: 400,
+        message: 'HTTPS is required for scanner setup.',
+      );
+    }
+    final requestBody = {'setup_code': setupCode, 'device_id': deviceId};
 
     final payload = await _post(
       '/face_attendance/scanner/setup',
       requestBody,
       authenticated: false,
       extraDb: db,
-    );
-
-    print(
-      '[OdooFaceAttendanceClient] setupScanner Response: ${jsonEncode(payload)}',
     );
 
     if (payload.containsKey('error') && payload['error'] != null) {
@@ -143,6 +138,33 @@ class OdooFaceAttendanceClient {
     return ScannerEmployeeSync.fromJson(payload);
   }
 
+  Future<ScannerIndexManifest?> scannerIndexManifest({
+    required int since,
+  }) async {
+    final response = await _http.get(
+      _uri('/face_attendance/scanner/index/manifest?since=$since'),
+      headers: _headers(path: '/face_attendance/scanner/index/manifest'),
+    );
+    if (response.statusCode == 304) return null;
+    return ScannerIndexManifest.fromJson(_decode(response));
+  }
+
+  Future<Uint8List> scannerIndexChunk(List<int> employeeIds) async {
+    if (employeeIds.isEmpty || employeeIds.length > 250) {
+      throw ArgumentError.value(
+        employeeIds,
+        'employeeIds',
+        'Must contain 1 to 250 IDs.',
+      );
+    }
+    final response = await _http.get(
+      _uri('/face_attendance/scanner/index/chunk?ids=${employeeIds.join(',')}'),
+      headers: _headers(path: '/face_attendance/scanner/index/chunk'),
+    );
+    if (response.statusCode >= 400) _decode(response);
+    return response.bodyBytes;
+  }
+
   Future<AttendanceStatus> status() async {
     final payload = await _get('/face_attendance/status');
     return AttendanceStatus.fromJson(
@@ -194,9 +216,6 @@ class OdooFaceAttendanceClient {
     } else if (timestamp != null) {
       body['punch_time'] = timestamp;
     }
-    if (fullLogData != null) {
-      _printLongMessage('FULL LOG DATA', jsonEncode(fullLogData));
-    }
     final payload = await _post('/face_attendance/punch', body);
     return PunchResult.fromJson(payload);
   }
@@ -206,13 +225,10 @@ class OdooFaceAttendanceClient {
     bool authenticated = true,
   }) async {
     final requestUrl = _uri(path);
-    print('API CALL: GET URL: $requestUrl');
     final response = await _http.get(
       requestUrl,
       headers: _headers(authenticated: authenticated, path: path),
     );
-    print('DEBUG CLIENT RESPONSE STATUS: ${response.statusCode}');
-    _printLongMessage('DEBUG CLIENT RESPONSE BODY', response.body);
     return _decode(response);
   }
 
@@ -228,37 +244,12 @@ class OdooFaceAttendanceClient {
       path: path,
     );
     final requestUrl = _uri(path);
-    print('API CALL: POST URL: $requestUrl');
-    print('DEBUG CLIENT HEADERS: $resolvedHeaders');
-    _printLongMessage('DEBUG CLIENT BODY', jsonEncode(body));
     final response = await _http.post(
       requestUrl,
       headers: resolvedHeaders,
       body: jsonEncode(body),
     );
-    print('DEBUG CLIENT RESPONSE STATUS: ${response.statusCode}');
-    _printLongMessage('DEBUG CLIENT RESPONSE BODY', response.body);
     return _decode(response);
-  }
-
-  void _printLongMessage(String label, String message) {
-    const chunkSize = 800;
-    final totalChunks = (message.length / chunkSize).ceil();
-
-    if (totalChunks == 0) {
-      print('$label:');
-      return;
-    }
-
-    for (var index = 0; index < totalChunks; index++) {
-      final start = index * chunkSize;
-      final end = (start + chunkSize < message.length)
-          ? start + chunkSize
-          : message.length;
-      print(
-        '$label [${index + 1}/$totalChunks]: ${message.substring(start, end)}',
-      );
-    }
   }
 
   Uri _uri(String path) {

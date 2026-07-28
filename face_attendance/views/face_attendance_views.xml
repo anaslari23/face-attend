@@ -6,7 +6,8 @@
             <list>
                 <field name="employee_id"/>
                 <field name="model_version"/>
-                <field name="device_uid"/>
+                <field name="state"/>
+                <field name="revision"/>
                 <field name="quality_score"/>
                 <field name="active"/>
                 <field name="create_date"/>
@@ -27,14 +28,15 @@
                             <field name="active"/>
                         </group>
                         <group>
-                            <field name="device_uid"/>
+                            <field name="state" readonly="1"/>
+                            <field name="revision" readonly="1"/>
                             <field name="quality_score"/>
                             <field name="create_date" readonly="1"/>
                         </group>
                     </group>
                     <notebook>
                         <page string="Embedding">
-                            <field name="embedding_json" nolabel="1"/>
+                            <field name="worker_error" nolabel="1" readonly="1"/>
                         </page>
                     </notebook>
                 </sheet>
@@ -180,6 +182,7 @@
             <form>
                 <header>
                     <button name="action_open_logs" type="object" string="Open Logs" class="btn-secondary"/>
+                    <button name="action_queue_template_backfill" type="object" string="Queue Template Backfill" class="btn-secondary"/>
                 </header>
                 <sheet>
                     <group>

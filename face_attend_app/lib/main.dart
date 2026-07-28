@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'src/api/odoo_face_attendance_client.dart';
 import 'src/models/session.dart';
@@ -13,8 +12,6 @@ import 'src/services/database_helper.dart';
 import 'src/services/local_log_service.dart';
 import 'src/services/secure_session_store.dart';
 import 'src/theme/app_theme.dart';
-import 'src/widgets/secret_token_dialog.dart';
-
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -25,62 +22,6 @@ Future<void> main() async {
     await DatabaseHelper.instance.migrateLegacyFilesIfNeeded();
   } catch (e) {
     debugPrint("SQLite initialization warning: $e");
-  }
-
-  // ================================
-  // PRINT ALL FLUTTER SECURE STORAGE
-  // ================================
-  const storage = FlutterSecureStorage();
-
-  try {
-    final allData = await storage.readAll();
-
-    debugPrint("");
-    debugPrint("==========================================");
-    debugPrint("      FLUTTER SECURE STORAGE DATA");
-    debugPrint("==========================================");
-
-    if (allData.isEmpty) {
-      debugPrint("Secure Storage is EMPTY");
-    } else {
-      allData.forEach((key, value) {
-        debugPrint("$key : $value");
-      });
-    }
-
-    debugPrint("==========================================");
-    debugPrint("");
-  } catch (e) {
-    debugPrint("Error reading secure storage: $e");
-  }
-
-  // ================================
-  // PRINT PARSED SESSION
-  // ================================
-  try {
-    final session = await SecureSessionStore().read();
-
-    debugPrint("");
-    debugPrint("==========================================");
-    debugPrint("          RESTORED SESSION");
-    debugPrint("==========================================");
-
-    if (session == null) {
-      debugPrint("No session found.");
-    } else {
-      debugPrint("Base URL           : ${session.baseUrl}");
-      debugPrint("Database           : ${session.db}");
-      debugPrint("Token              : ${session.token}");
-      debugPrint("Device ID          : ${session.deviceId}");
-      debugPrint("Device Name        : ${session.deviceName}");
-      debugPrint("Generated Device ID: ${session.generatedDeviceId}");
-      
-    }
-
-    debugPrint("==========================================");
-    debugPrint("");
-  } catch (e) {
-    debugPrint("Error reading session: $e");
   }
 
   runApp(const FaceAttendApp());
@@ -454,33 +395,25 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: GestureDetector(
-          onLongPress: () => SecretTokenDialog.show(context),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.face_retouching_natural,
-                color: FaceAttendColors.accent,
-                size: 22,
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.face_retouching_natural,
+              color: FaceAttendColors.accent,
+              size: 22,
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'PISmartPunch',
+              style: TextStyle(
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.5,
               ),
-              const SizedBox(width: 8),
-              const Text(
-                'PISmartPunch',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: -0.5,
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
         actions: [
-          IconButton(
-            onPressed: () => SecretTokenDialog.show(context),
-            tooltip: 'Database Inspector (Secret Token)',
-            icon: const Icon(Icons.admin_panel_settings, color: Colors.amber),
-          ),
           IconButton(
             onPressed: _refresh,
             tooltip: 'Refresh Status',
@@ -501,7 +434,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             icon: const Icon(Icons.settings),
           ),
         ],
-
       ),
       body: SafeArea(
         child: AnimatedBuilder(

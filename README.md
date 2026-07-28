@@ -187,6 +187,15 @@ flutter analyze
 flutter test
 ```
 
+Scanner-index capacity benchmark (run it on the approved Android phone for a meaningful device result):
+
+```bash
+flutter test -d ANDROID_DEVICE_ID test/scanner_index_benchmark_test.dart
+flutter test -d ANDROID_DEVICE_ID --dart-define=EMPLOYEE_COUNT=5000 test/scanner_index_benchmark_test.dart
+```
+
+It reports the binary transfer size plus chunk decoding and local snapshot activation time. It creates synthetic vectors only; it does not contact Odoo, generate face embeddings, or alter the phone's saved employee index.
+
 Manual checks:
 
 - Configure scanner with Odoo URL, database, and scanner setup code.

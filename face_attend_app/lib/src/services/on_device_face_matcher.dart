@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path_provider/path_provider.dart';
 
 import '../api/odoo_face_attendance_client.dart';
@@ -221,6 +222,10 @@ class OnDeviceFaceMatcher {
     return result;
   }
 
+  @visibleForTesting
+  static Map<int, Float32List> decodeChunkForTesting(Uint8List bytes) =>
+      _decodeChunk(bytes);
+
   Future<LocalFaceIndex> readyIndex() async {
     final index = _index ?? await LocalFaceIndexStore.read();
     _index = index;
@@ -426,6 +431,9 @@ class LocalFaceIndexStore {
     return result.takeBytes();
   }
 
+  @visibleForTesting
+  static Uint8List encodeForTesting(LocalFaceIndex index) => _encode(index);
+
   static LocalFaceIndex _decode(Uint8List bytes) {
     if (bytes.length < 8 ||
         utf8.decode(bytes.sublist(0, 4), allowMalformed: true) != 'FAI2') {
@@ -488,6 +496,9 @@ class LocalFaceIndexStore {
       records: records,
     );
   }
+
+  @visibleForTesting
+  static LocalFaceIndex decodeForTesting(Uint8List bytes) => _decode(bytes);
 
   static void _writeU32(BytesBuilder builder, int value) {
     final data = ByteData(4)..setUint32(0, value, Endian.big);

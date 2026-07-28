@@ -183,6 +183,7 @@
                 <header>
                     <button name="action_open_logs" type="object" string="Open Logs" class="btn-secondary"/>
                     <button name="action_queue_template_backfill" type="object" string="Queue Template Backfill" class="btn-secondary"/>
+                    <button name="action_retry_failed_templates" type="object" string="Retry Failed Templates" class="btn-secondary"/>
                 </header>
                 <sheet>
                     <group>
@@ -194,6 +195,11 @@
                             <field name="confidence_threshold"/>
                             <field name="liveness_required"/>
                             <field name="anti_spoofing_required"/>
+                        </group>
+                        <group string="Template Backfill">
+                            <field name="template_pending_count" readonly="1"/>
+                            <field name="template_ready_count" readonly="1"/>
+                            <field name="template_failed_count" readonly="1"/>
                         </group>
                     </group>
                     <notebook>

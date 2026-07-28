@@ -27,6 +27,17 @@ jobs:
       - run: flutter analyze --no-fatal-infos --no-fatal-warnings
       - run: flutter test
       - run: flutter build apk --debug --target-platform android-arm64
+      - run: docker build --tag face-template-worker:test -f template_worker/Dockerfile .
+      - name: Check template worker
+        run: |
+          docker run --detach --rm --name face-template-worker -p 8080:8080 -e WORKER_TOKEN=ci-test face-template-worker:test
+          healthy=0
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8080/healthz; then healthy=1; break; fi
+            sleep 1
+          done
+          test "$healthy" = 1
+          docker stop face-template-worker
       - uses: actions/upload-artifact@v4
         with:
           name: scanner-debug-apk

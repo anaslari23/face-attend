@@ -119,6 +119,77 @@ class OnDeviceFaceMatcher {
     }
   }
 
+  Future<FaceIndexSyncResult> syncLegacyAvatars() async {
+    final stored = await LocalFaceIndexStore.read();
+    final remote = await _client.scannerEmployees(
+      modelVersion: modelVersion,
+      knownAvatarWriteDates: stored.avatarWriteDateMap,
+    );
+    final records = <LocalFaceRecord>[];
+    final failures = <String>[];
+    final pending = <ScannerEmployee>[];
+    for (final employee in remote.employees.where((item) => item.faceEnabled)) {
+      final cached = stored.recordFor(employee.id);
+      if (cached != null &&
+          cached.avatarWriteDate == employee.avatarWriteDate &&
+          cached.primaryEmbedding.length == embeddingDimensions) {
+        records.add(cached.copyWith(name: employee.name));
+      } else {
+        pending.add(employee);
+      }
+    }
+
+    var next = 0;
+    // ponytail: four on-device embeddings at once; use central templates for enterprise provisioning.
+    Future<void> worker() async {
+      while (next < pending.length) {
+        final employee = pending[next++];
+        if (employee.avatar.isEmpty) {
+          failures.add('${employee.name}: missing avatar');
+          continue;
+        }
+        try {
+          final result = await _faceService.embedImageBytes(
+            base64Decode(employee.avatar),
+          );
+          if (!result.valid || result.embedding == null) {
+            failures.add(
+              '${employee.name}: ${result.error ?? 'invalid avatar'}',
+            );
+            continue;
+          }
+          records.add(
+            LocalFaceRecord(
+              employeeId: employee.id,
+              employeeName: employee.name,
+              department: employee.department,
+              avatarWriteDate: employee.avatarWriteDate,
+              primaryEmbedding: result.embedding!.toList(),
+              adaptiveEmbeddings: const [],
+            ),
+          );
+        } catch (error) {
+          failures.add('${employee.name}: $error');
+        }
+      }
+    }
+
+    await Future.wait(List.generate(4, (_) => worker()));
+    final index = LocalFaceIndex(
+      modelVersion: modelVersion,
+      threshold: remote.threshold,
+      revision: 0,
+      syncedAt: DateTime.now(),
+      records: records,
+    );
+    await LocalFaceIndexStore.write(index);
+    _index = index;
+    return FaceIndexSyncResult(
+      indexedEmployees: records.length,
+      failures: failures,
+    );
+  }
+
   static Map<int, Float32List> _decodeChunk(Uint8List bytes) {
     if (bytes.length < 8 ||
         String.fromCharCodes(bytes.sublist(0, 4)) != 'FAI1') {

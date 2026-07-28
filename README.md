@@ -91,9 +91,23 @@ The setup code becomes the scanner token stored on the phone.
 Set these server-side values outside source control:
 
 - `FACE_ATTENDANCE_TEMPLATE_KEY`: a valid Fernet key used to encrypt templates at rest.
-- Odoo system parameter `face_attendance.template_worker_url`: the internal worker URL. The worker must implement `POST /v1/templates`, accept `employee_id`, `model_version`, and `avatar_base64`, and return `model_version`, `embedding_b64` (512 big-endian float32 values), and optional `quality_score`.
+- `FACE_TEMPLATE_WORKER_TOKEN`: a random shared token for Odoo and the Docker worker.
 
-Open **Face Attendance > Configuration** and select **Queue Template Backfill**. The existing one-minute cron processes ten queued avatars per run, so schedule this initial action overnight for large rosters. New and changed avatars queue automatically.
+Start the internal worker on the Odoo network:
+
+```bash
+FACE_TEMPLATE_WORKER_TOKEN='replace-with-a-random-secret' \
+docker compose -f docker-compose.template-worker.yml up -d --build
+```
+
+Set these Odoo system parameters:
+
+- `face_attendance.template_worker_url`: `http://127.0.0.1:8088`
+- `face_attendance.template_worker_token`: the same `FACE_TEMPLATE_WORKER_TOKEN` value
+
+The worker uses the bundled `w600k_r50.onnx` model and the same five-point ArcFace alignment as the phone. It accepts only HR avatars and returns model version, avatar hash, quality score, and a packed 512-float embedding; it never receives live scanner photos.
+
+Open **Face Attendance > Configuration** and select **Queue Template Backfill**. The one-minute cron processes up to 50 queued avatars per run. Use the visible pending/ready/failed counts to monitor the first backfill and **Retry Failed Templates** after correcting invalid HR avatars. New and changed avatars queue automatically.
 
 ### 6. Add Employees
 

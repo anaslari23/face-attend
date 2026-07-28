@@ -152,6 +152,20 @@ class FaceAttendanceTemplate(models.Model):
             queued += 1
         return queued
 
+    @api.model
+    def retry_failed_templates(self):
+        queued = 0
+        for template in self.search([("state", "=", "failed"), ("active", "=", True)]):
+            employee = template.employee_id
+            if not employee or not employee.active:
+                continue
+            try:
+                self.mark_pending(employee, employee._avatar_image_bytes())
+                queued += 1
+            except UserError:
+                continue
+        return queued
+
     def _set_embedding(self, embedding_bytes, quality_score=0.0):
         if len(embedding_bytes) != EMBEDDING_BYTES:
             raise UserError(_("The template worker must return exactly 512 float32 values."))
@@ -184,10 +198,11 @@ class FaceAttendanceTemplate(models.Model):
             raise UserError(_("Could not decrypt the employee scanner template.")) from error
 
     @api.model
-    def _cron_generate_templates(self, limit=10):
+    def _cron_generate_templates(self, limit=50):
         worker_url = self.env["ir.config_parameter"].sudo().get_param("face_attendance.template_worker_url")
         if not worker_url:
             return
+        worker_token = self.env["ir.config_parameter"].sudo().get_param("face_attendance.template_worker_token")
         pending = self.search([("state", "=", "pending"), ("active", "=", True)], limit=limit, order="revision")
         for template in pending:
             employee = template.employee_id
@@ -206,12 +221,17 @@ class FaceAttendanceTemplate(models.Model):
                         "model_version": template.model_version,
                         "avatar_base64": base64.b64encode(image_bytes).decode(),
                     },
+                    headers={"Authorization": "Bearer %s" % worker_token} if worker_token else {},
                     timeout=30,
                 )
                 response.raise_for_status()
                 payload = response.json()
                 if payload.get("model_version") != template.model_version:
                     raise UserError(_("Template worker returned a different ArcFace model version."))
+                if payload.get("employee_id") != employee.id:
+                    raise UserError(_("Template worker returned a different employee ID."))
+                if payload.get("avatar_hash") != template.avatar_hash:
+                    raise UserError(_("Template worker returned a different avatar hash."))
                 embedding = base64.b64decode(payload["embedding_b64"], validate=True)
                 template._set_embedding(embedding, float(payload.get("quality_score") or 0.0))
             except Exception as error:
@@ -245,6 +265,20 @@ class FaceAttendanceConfig(models.Model):
     anti_spoofing_required = fields.Boolean(default=True)
     active = fields.Boolean(default=True)
     device_ids = fields.One2many("face.attendance.device", "config_id", string="Registered Devices")
+    template_pending_count = fields.Integer(compute="_compute_template_counts")
+    template_ready_count = fields.Integer(compute="_compute_template_counts")
+    template_failed_count = fields.Integer(compute="_compute_template_counts")
+
+    def _compute_template_counts(self):
+        templates = self.env["face.attendance.template"].sudo()
+        counts = {
+            state: templates.search_count([("state", "=", state), ("active", "=", True)])
+            for state in ("pending", "ready", "failed")
+        }
+        for config in self:
+            config.template_pending_count = counts["pending"]
+            config.template_ready_count = counts["ready"]
+            config.template_failed_count = counts["failed"]
 
     def action_open_logs(self):
         self.ensure_one()
@@ -259,6 +293,20 @@ class FaceAttendanceConfig(models.Model):
             "params": {
                 "title": _("Face template backfill queued"),
                 "message": _("%(count)s employee avatars are queued for the template worker.") % {"count": queued},
+                "type": "success",
+                "sticky": False,
+            },
+        }
+
+    def action_retry_failed_templates(self):
+        self.ensure_one()
+        queued = self.env["face.attendance.template"].sudo().retry_failed_templates()
+        return {
+            "type": "ir.actions.client",
+            "tag": "display_notification",
+            "params": {
+                "title": _("Failed templates queued"),
+                "message": _("%(count)s failed templates are queued for retry.") % {"count": queued},
                 "type": "success",
                 "sticky": False,
             },

@@ -183,9 +183,35 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   Future<void> _retryScanner() async {
     if ((await _matcher.readyIndex()).records.isEmpty) {
-      await _syncIndexNow();
+      await _loadFacesForTesting();
     } else {
       _resetDetectionState();
+    }
+  }
+
+  Future<void> _loadFacesForTesting() async {
+    if (_syncingIndex) return;
+    _syncingIndex = true;
+    if (mounted) {
+      setState(() {
+        _message = 'Loading employee faces for this phone';
+        _scannerState = _ScannerState.loading;
+      });
+    }
+    try {
+      final sync = await _matcher.syncLegacyAvatars();
+      if (sync.indexedEmployees == 0) {
+        throw StateError('No usable employee avatars found in Odoo.');
+      }
+      await _activateScanner();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _message = error.toString().replaceAll('uri=', 'url=');
+        _scannerState = _ScannerState.failed;
+      });
+    } finally {
+      _syncingIndex = false;
     }
   }
 
@@ -777,7 +803,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                               Text(
                                 _scannerState == _ScannerState.paused ||
                                         _scannerState == _ScannerState.failed
-                                    ? 'Sync Index'
+                                    ? 'Load Faces'
                                     : 'Scan Now',
                                 style: const TextStyle(
                                   fontSize: 16,

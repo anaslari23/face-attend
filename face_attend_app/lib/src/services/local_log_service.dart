@@ -330,36 +330,66 @@ class LocalLogService {
 
         // Send UTC so Odoo does not apply the device timezone offset twice.
         final originalTimestampStr = _backendTimestamp(log.timestamp);
+        final currentSyncTimeStr = _backendTimestamp(DateTime.now());
 
         debugPrint("");
-        debugPrint("SYNCING LOG : ${log.id}");
-        debugPrint("Employee    : ${log.employeeName}");
-        debugPrint("Timestamp   : $originalTimestampStr");
+        debugPrint("=======================================================");
+        debugPrint("SYNCING LOG (OFFLINE ATTENDANCE):");
+        debugPrint("Local Log ID            : ${log.id}");
+        debugPrint("Employee                : ${log.employeeName}");
+        debugPrint("Punch Time (Original)   : $originalTimestampStr");
+        debugPrint("Creation Date (Sync)    : $currentSyncTimeStr");
+        debugPrint("Difference status       : Punch Time and Sync Creation Date are DIFFERENT");
+        debugPrint("=======================================================");
 
-        final result = await client.punch(
-          accepted: p['accepted'] as bool? ?? false,
-          matchedEmployeeId: p['matched_employee_id'] as int?,
-          matchScore: (p['match_score'] as num? ?? 0.0).toDouble(),
-          threshold: (p['threshold'] as num? ?? 0.70).toDouble(),
-          deviceId: p['device_id'] as String? ?? '',
-          appVersion: p['app_version'] as String? ?? '1.0.0',
-          failureReason: p['failure_reason'] as String?,
-          secondBestConfidence: p['second_best_confidence'] != null
+        final requestBody = <String, dynamic>{
+          'accepted': p['accepted'] as bool? ?? false,
+          'matched_employee_id': p['matched_employee_id'] as int?,
+          'match_score': (p['match_score'] as num? ?? 0.0).toDouble(),
+          'threshold': (p['threshold'] as num? ?? 0.70).toDouble(),
+          'device_id': p['device_id'] as String? ?? '',
+          'app_version': p['app_version'] as String? ?? '1.0.0',
+          'failure_reason': p['failure_reason'] as String?,
+          'second_best_confidence': p['second_best_confidence'] != null
               ? (p['second_best_confidence'] as num).toDouble()
               : null,
-          embeddingSource: p['embedding_source'] as String?,
-          reviewEmbeddingId: p['review_embedding_id'] as int?,
-          needsReview: p['needs_review'] as bool? ?? false,
-          livenessPassed: p['liveness_passed'] as bool? ?? false,
-          livenessScore: p['liveness_score'] != null
+          'embedding_source': p['embedding_source'] as String?,
+          'review_embedding_id': p['review_embedding_id'] as int?,
+          'needs_review': p['needs_review'] as bool? ?? false,
+          'liveness_passed': p['liveness_passed'] as bool? ?? false,
+          'liveness_score': p['liveness_score'] != null
               ? (p['liveness_score'] as num).toDouble()
               : null,
-          spoofScore: p['spoof_score'] != null
+          'spoof_score': p['spoof_score'] != null
               ? (p['spoof_score'] as num).toDouble()
               : null,
-          timestamp: originalTimestampStr,
-          punchTime: originalTimestampStr,
-          fullLogData: _fullLogData(log, originalTimestampStr),
+          'timestamp': originalTimestampStr,
+          'punch_time': originalTimestampStr,
+          'full_log_data': _fullLogData(log, originalTimestampStr),
+        };
+
+        debugPrint("REQUEST BODY TO ODOO:");
+        debugPrint(const JsonEncoder.withIndent('  ').convert(requestBody));
+        debugPrint("=======================================================");
+
+        final result = await client.punch(
+          accepted: requestBody['accepted'] as bool,
+          matchedEmployeeId: requestBody['matched_employee_id'] as int?,
+          matchScore: requestBody['match_score'] as double,
+          threshold: requestBody['threshold'] as double,
+          deviceId: requestBody['device_id'] as String,
+          appVersion: requestBody['app_version'] as String,
+          failureReason: requestBody['failure_reason'] as String?,
+          secondBestConfidence: requestBody['second_best_confidence'] as double?,
+          embeddingSource: requestBody['embedding_source'] as String?,
+          reviewEmbeddingId: requestBody['review_embedding_id'] as int?,
+          needsReview: requestBody['needs_review'] as bool,
+          livenessPassed: requestBody['liveness_passed'] as bool,
+          livenessScore: requestBody['liveness_score'] as double?,
+          spoofScore: requestBody['spoof_score'] as double?,
+          timestamp: requestBody['timestamp'] as String?,
+          punchTime: requestBody['punch_time'] as String?,
+          fullLogData: requestBody['full_log_data'] as Map<String, dynamic>?,
         );
 
         log.isSynced = true;

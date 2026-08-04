@@ -1,7 +1,9 @@
 import base64
 import binascii
 
+# pyrefly: ignore [missing-import]
 from odoo import _, api, fields, models
+# pyrefly: ignore [missing-import]
 from odoo.exceptions import UserError
 
 

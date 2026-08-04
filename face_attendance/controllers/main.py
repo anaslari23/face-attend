@@ -3,7 +3,9 @@ import logging
 import secrets
 from datetime import timedelta
 
+# pyrefly: ignore [missing-import]
 from odoo import fields, http
+# pyrefly: ignore [missing-import]
 from odoo.http import request
 
 _logger = logging.getLogger(__name__)

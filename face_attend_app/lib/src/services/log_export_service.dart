@@ -7,7 +7,24 @@ import 'package:share_plus/share_plus.dart';
 import 'local_log_service.dart';
 
 class LogExportService {
-  static Future<void> exportToPdf(List<LocalPunchLog> logs) async {
+  static Future<Directory> _getExportDirectory() async {
+    Directory? dir;
+    try {
+      if (Platform.isAndroid) {
+        dir = Directory('/storage/emulated/0/Download');
+        if (!await dir.exists()) {
+          dir = await getExternalStorageDirectory();
+        }
+      } else if (Platform.isIOS) {
+        dir = await getApplicationDocumentsDirectory();
+      } else {
+        dir = await getDownloadsDirectory();
+      }
+    } catch (_) {}
+    return dir ?? await getApplicationDocumentsDirectory();
+  }
+
+  static Future<String> exportToPdf(List<LocalPunchLog> logs) async {
     final pdf = pw.Document();
 
     pdf.addPage(
@@ -51,8 +68,10 @@ class LogExportService {
               String status = '';
               if (log.isSynced) {
                 status = accepted ? 'Synced' : 'Match Failed';
+              } else if (log.syncError != null) {
+                status = 'Sync Error';
               } else {
-                //  status = log.syncError != null ? 'Sync Error' : 'Offline';
+                status = 'Offline Queue';
               }
 
               return [
@@ -76,18 +95,22 @@ class LogExportService {
       ),
     );
 
-    final output = await getTemporaryDirectory();
+    final output = await _getExportDirectory();
     final file = File(
       "${output.path}/face_attend_logs_${DateTime.now().millisecondsSinceEpoch}.pdf",
     );
     await file.writeAsBytes(await pdf.save());
 
-    await Share.shareXFiles([
-      XFile(file.path),
-    ], text: 'Face Attendance Logs PDF');
+    try {
+      await Share.shareXFiles([
+        XFile(file.path),
+      ], text: 'Face Attendance Logs PDF');
+    } catch (_) {}
+
+    return file.path;
   }
 
-  static Future<void> exportToExcel(List<LocalPunchLog> logs) async {
+  static Future<String?> exportToExcel(List<LocalPunchLog> logs) async {
     final excel = Excel.createExcel();
     final sheet = excel[excel.getDefaultSheet() ?? 'Sheet1'];
 
@@ -112,8 +135,10 @@ class LogExportService {
       String status = '';
       if (log.isSynced) {
         status = accepted ? 'Synced' : 'Match Failed';
+      } else if (log.syncError != null) {
+        status = 'Sync Error';
       } else {
-        //  status = log.syncError != null ? 'Sync Error' : 'Offline';
+        status = 'Offline Queue';
       }
 
       sheet.appendRow([
@@ -132,14 +157,20 @@ class LogExportService {
 
     final fileBytes = excel.save();
     if (fileBytes != null) {
-      final output = await getTemporaryDirectory();
+      final output = await _getExportDirectory();
       final file = File(
         "${output.path}/face_attend_logs_${DateTime.now().millisecondsSinceEpoch}.xlsx",
       );
       await file.writeAsBytes(fileBytes);
-      await Share.shareXFiles([
-        XFile(file.path),
-      ], text: 'Face Attendance Logs Excel');
+
+      try {
+        await Share.shareXFiles([
+          XFile(file.path),
+        ], text: 'Face Attendance Logs Excel');
+      } catch (_) {}
+
+      return file.path;
     }
+    return null;
   }
 }

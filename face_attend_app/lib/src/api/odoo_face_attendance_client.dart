@@ -30,7 +30,7 @@ class OdooFaceAttendanceClient {
       );
     }
     final dbs = <String>[];
-    
+
     void addDbValue(dynamic val) {
       if (val is List) {
         for (final item in val) {
@@ -54,7 +54,6 @@ class OdooFaceAttendanceClient {
 
     return dbs.toSet().toList();
   }
-
 
   Future<Map<String, dynamic>> getPublicConfig() async {
     return _get('/public/config', authenticated: false);
@@ -194,9 +193,9 @@ class OdooFaceAttendanceClient {
     } else if (timestamp != null) {
       body['punch_time'] = timestamp;
     }
-    if (fullLogData != null) {
-      _printLongMessage('FULL LOG DATA', jsonEncode(fullLogData));
-    }
+    // if (fullLogData != null) {
+    //   _printLongMessage('FULL LOG DATA', jsonEncode(fullLogData));
+    // }
     final payload = await _post('/face_attendance/punch', body);
     return PunchResult.fromJson(payload);
   }

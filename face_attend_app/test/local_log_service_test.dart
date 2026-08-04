@@ -70,11 +70,11 @@ void main() {
     test('Formats backend punch timestamps as UTC', () {
       final localTimestamp = DateTime.parse('2026-07-15T09:59:27+05:30');
 
-      final formatted = LocalLogService.instance.backendTimestampForTesting(
+      final formatted = LocalLogService.instance.formatBackendTimestamp(
         localTimestamp,
       );
 
-      expect(formatted, '2026-07-15T04:29:27.000Z');
+      expect(formatted, '2026-07-15 04:29:27');
     });
   });
 }

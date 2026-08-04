@@ -157,32 +157,20 @@ class FaceRecognitionService {
     final box = face.boundingBox;
     final rect = Rect.fromLTRB(box.left, box.top, box.right, box.bottom);
     final resolvedImageSize = imageSize ?? face.originalSize;
-    final shortSide = min(resolvedImageSize.width, resolvedImageSize.height);
-    final minFaceSize = imageSize == null ? 160.0 : shortSide * 0.20;
+
+    // For static images/avatars, we relax the size constraint significantly.
+    // We only require a face that is at least 30x30 pixels.
+    const double minFaceSize = 30.0;
     if (rect.width < minFaceSize || rect.height < minFaceSize) {
       return FaceValidationResult.failure(
-        'Move closer to the camera',
-        boundingBox: rect,
-        imageSize: resolvedImageSize,
-      );
-    }
-    final maxFaceSize = shortSide * 0.82;
-    if (rect.width > maxFaceSize || rect.height > maxFaceSize) {
-      return FaceValidationResult.failure(
-        'Move slightly back',
+        'Face too small',
         boundingBox: rect,
         imageSize: resolvedImageSize,
       );
     }
 
+    // No maximum face size restriction for static avatars, and no quality check restriction.
     final qualityScore = _qualityScore(rect, resolvedImageSize);
-    if (qualityScore < 0.35) {
-      return FaceValidationResult.failure(
-        'Face not clear',
-        boundingBox: rect,
-        imageSize: resolvedImageSize,
-      );
-    }
 
     return FaceValidationResult.success(
       qualityScore: qualityScore,

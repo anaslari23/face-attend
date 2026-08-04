@@ -27,29 +27,68 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
   String _viewMode = 'list'; // 'list', 'calendar', 'kanban'
   DateTime _calendarFocusedMonth = DateTime.now();
   DateTime _calendarSelectedDay = DateTime.now();
+  final TextEditingController _searchController = TextEditingController();
+  String _searchText = '';
+  final ScrollController _calendarScrollController = ScrollController();
+  bool _calendarExpanded = true;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _calendarScrollController.dispose();
+    super.dispose();
+  }
+
+  void _onCalendarScroll() {
+    if (!_calendarScrollController.hasClients) return;
+    final pixels = _calendarScrollController.position.pixels;
+    if (pixels > 15 && _calendarExpanded) {
+      setState(() {
+        _calendarExpanded = false;
+      });
+    } else if (pixels <= 5 && !_calendarExpanded) {
+      setState(() {
+        _calendarExpanded = true;
+      });
+    }
+  }
 
   List<LocalPunchLog> get _filteredLogs {
-    if (_selectedDateRange == null) {
-      return _logs;
+    List<LocalPunchLog> result = _logs;
+    if (_searchText.isNotEmpty) {
+      final query = _searchText.toLowerCase();
+      result = result.where((log) {
+        return log.employeeName.toLowerCase().contains(query);
+      }).toList();
     }
-    return _logs.where((log) {
-      final date = log.timestamp;
-      final startDate = _selectedDateRange!.start;
-      final endDate = _selectedDateRange!.end;
+    if (_selectedDateRange != null) {
+      result = result.where((log) {
+        final date = log.timestamp;
+        final startDate = _selectedDateRange!.start;
+        final endDate = _selectedDateRange!.end;
 
-      final logDate = DateTime(date.year, date.month, date.day);
-      final compareStart = DateTime(
-        startDate.year,
-        startDate.month,
-        startDate.day,
-      );
-      final compareEnd = DateTime(endDate.year, endDate.month, endDate.day);
+        final logDate = DateTime(date.year, date.month, date.day);
+        final compareStart = DateTime(
+          startDate.year,
+          startDate.month,
+          startDate.day,
+        );
+        final compareEnd = DateTime(endDate.year, endDate.month, endDate.day);
 
-      return (logDate.isAtSameMomentAs(compareStart) ||
-              logDate.isAfter(compareStart)) &&
-          (logDate.isAtSameMomentAs(compareEnd) ||
-              logDate.isBefore(compareEnd));
-    }).toList();
+        return (logDate.isAtSameMomentAs(compareStart) ||
+                logDate.isAfter(compareStart)) &&
+            (logDate.isAtSameMomentAs(compareEnd) ||
+                logDate.isBefore(compareEnd));
+      }).toList();
+    }
+    return result;
+  }
+
+  List<LocalPunchLog> get _visibleLogs {
+    if (_viewMode == 'calendar') {
+      return _getLogsForDate(_calendarSelectedDay);
+    }
+    return _filteredLogs;
   }
 
   List<LocalPunchLog> _getLogsForDate(DateTime date) {
@@ -79,6 +118,7 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
   @override
   void initState() {
     super.initState();
+    _calendarScrollController.addListener(_onCalendarScroll);
     _client = OdooFaceAttendanceClient(
       baseUrl: widget.session.baseUrl,
       db: widget.session.db,
@@ -283,6 +323,68 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
     }
   }
 
+  Widget _buildSearchBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      color: Colors.white,
+      child: TextField(
+        controller: _searchController,
+        decoration: InputDecoration(
+          hintText: 'Search employee name...',
+          prefixIcon: const Icon(
+            Icons.search,
+            color: FaceAttendColors.muted,
+            size: 20,
+          ),
+          suffixIcon: _searchText.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear, size: 18),
+                  onPressed: () {
+                    _searchController.clear();
+                    setState(() {
+                      _searchText = '';
+                    });
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: FaceAttendColors.surfaceMuted,
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 0,
+            horizontal: 16,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(
+              color: FaceAttendColors.border,
+              width: 0.8,
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(
+              color: FaceAttendColors.border,
+              width: 0.8,
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(
+              color: FaceAttendColors.accent,
+              width: 1.2,
+            ),
+          ),
+        ),
+        style: const TextStyle(fontSize: 14, color: FaceAttendColors.ink),
+        onChanged: (val) {
+          setState(() {
+            _searchText = val;
+          });
+        },
+      ),
+    );
+  }
+
   Widget _buildFilterBar() {
     final hasFilter = _selectedDateRange != null;
     final start = _selectedDateRange?.start;
@@ -414,7 +516,9 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
               });
             },
             icon: const Icon(Icons.clear, size: 18),
-            label: const Text('Clear Filter'),
+            label: const Text(
+              'Clear Filter',
+            ), // <--- Ensure this parameter is present
             style: ElevatedButton.styleFrom(
               foregroundColor: Colors.white,
               backgroundColor: FaceAttendColors.accent,
@@ -443,17 +547,27 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
             tooltip: 'Clear History',
             onPressed: _logs.isEmpty ? null : _clearLogs,
           ),
-          if (_filteredLogs.isNotEmpty)
+          if (_visibleLogs.isNotEmpty)
             PopupMenuButton<String>(
               icon: const Icon(Icons.download_outlined),
               tooltip: 'Export Logs',
               onSelected: (value) async {
                 final messenger = ScaffoldMessenger.of(context);
                 try {
+                  String? path;
                   if (value == 'pdf') {
-                    await LogExportService.exportToPdf(_filteredLogs);
+                    path = await LogExportService.exportToPdf(_visibleLogs);
                   } else if (value == 'excel') {
-                    await LogExportService.exportToExcel(_filteredLogs);
+                    path = await LogExportService.exportToExcel(_visibleLogs);
+                  }
+                  if (mounted && path != null) {
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text('File downloaded to: $path'),
+                        backgroundColor: FaceAttendColors.success,
+                        duration: const Duration(seconds: 5),
+                      ),
+                    );
                   }
                 } catch (e) {
                   if (mounted) {
@@ -564,6 +678,7 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
                 ),
               ),
 
+            _buildSearchBar(),
             _buildFilterBar(),
             _buildViewSelector(),
 
@@ -692,27 +807,27 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
     final normalizedBaseUrl = _client.baseUrl.endsWith('/')
         ? _client.baseUrl.substring(0, _client.baseUrl.length - 1)
         : _client.baseUrl;
-    final logJson = const JsonEncoder.withIndent(
-      '  ',
-    ).convert(logs.map((log) => log.toJson()).toList());
-    const chunkSize = 800;
-    final totalChunks = (logJson.length / chunkSize).ceil();
+    // final logJson = const JsonEncoder.withIndent(
+    //   '  ',
+    // ).convert(logs.map((log) => log.toJson()).toList());
+    // const chunkSize = 800;
+    // final totalChunks = (logJson.length / chunkSize).ceil();
 
     debugPrint('DEVICE ACTIVITY LOGS PAGE OPENED');
-    debugPrint('FULL LOCAL LOG COUNT: ${logs.length}');
+    // debugPrint('FULL LOCAL LOG COUNT: ${logs.length}');
     debugPrint(
       'LOG UPDATE API: POST URL: $normalizedBaseUrl/face_attendance/punch',
     );
-    for (var index = 0; index < totalChunks; index++) {
-      final start = index * chunkSize;
-      final end = (start + chunkSize < logJson.length)
-          ? start + chunkSize
-          : logJson.length;
-      debugPrint(
-        'FULL LOCAL LOG DATA [${index + 1}/$totalChunks]: '
-        '${logJson.substring(start, end)}',
-      );
-    }
+    // for (var index = 0; index < totalChunks; index++) {
+    //   final start = index * chunkSize;
+    //   final end = (start + chunkSize < logJson.length)
+    //       ? start + chunkSize
+    //       : logJson.length;
+    //   // debugPrint(
+    //   //   'FULL LOCAL LOG DATA [${index + 1}/$totalChunks]: '
+    //   //   '${logJson.substring(start, end)}',
+    //   // );
+    // }
   }
 
   Widget _buildViewSelector() {
@@ -819,12 +934,38 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
                   });
                 },
               ),
-              Text(
-                '${_monthName(month)} $year',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
-                  color: FaceAttendColors.ink,
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    _calendarExpanded = !_calendarExpanded;
+                  });
+                },
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        '${_monthName(month)} $year',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: FaceAttendColors.ink,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(
+                        _calendarExpanded
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
+                        size: 20,
+                        color: FaceAttendColors.accent,
+                      ),
+                    ],
+                  ),
                 ),
               ),
               IconButton(
@@ -839,160 +980,175 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
           ),
         ),
 
-        // Weekdays labels
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: weekdays
-                .map(
-                  (day) => Expanded(
-                    child: Center(
-                      child: Text(
-                        day,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: FaceAttendColors.muted,
-                        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.fastOutSlowIn,
+          child: _calendarExpanded
+              ? Column(
+                  children: [
+                    // Weekdays labels
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Row(
+                        children: weekdays
+                            .map(
+                              (day) => Expanded(
+                                child: Center(
+                                  child: Text(
+                                    day,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: FaceAttendColors.muted,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            )
+                            .toList(),
                       ),
                     ),
-                  ),
+                    const SizedBox(height: 8),
+
+                    // Calendar Grid
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 7,
+                              mainAxisSpacing: 6,
+                              crossAxisSpacing: 6,
+                              childAspectRatio: 1.0,
+                            ),
+                        itemCount: totalCells,
+                        itemBuilder: (context, index) {
+                          if (index < emptyPrefixCells) {
+                            return const SizedBox();
+                          }
+                          final day = index - emptyPrefixCells + 1;
+                          final date = DateTime(year, month, day);
+                          final isSelected =
+                              date.year == _calendarSelectedDay.year &&
+                              date.month == _calendarSelectedDay.month &&
+                              date.day == _calendarSelectedDay.day;
+
+                          final dayLogs = _getLogsForDate(date);
+                          final hasLogs = dayLogs.isNotEmpty;
+
+                          // Determine dots to show
+                          final hasPending = dayLogs.any(
+                            (l) => !l.isSynced && l.syncError == null,
+                          );
+                          final hasError = dayLogs.any(
+                            (l) => l.syncError != null,
+                          );
+                          final hasSynced = dayLogs.any((l) => l.isSynced);
+
+                          return InkWell(
+                            onTap: () {
+                              setState(() {
+                                _calendarSelectedDay = date;
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(12),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 150),
+                              decoration: BoxDecoration(
+                                color: isSelected
+                                    ? FaceAttendColors.accent
+                                    : (hasLogs
+                                          ? FaceAttendColors.surfaceMuted
+                                          : Colors.transparent),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: isSelected
+                                      ? FaceAttendColors.accent
+                                      : (DateTime.now().year == date.year &&
+                                                DateTime.now().month ==
+                                                    date.month &&
+                                                DateTime.now().day == date.day
+                                            ? FaceAttendColors.accent
+                                                  .withValues(alpha: 0.5)
+                                            : Colors.transparent),
+                                  width: 1.5,
+                                ),
+                              ),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    '$day',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: isSelected
+                                          ? FontWeight.w800
+                                          : FontWeight.w600,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : (hasLogs
+                                                ? FaceAttendColors.ink
+                                                : FaceAttendColors.ink
+                                                      .withValues(alpha: 0.8)),
+                                    ),
+                                  ),
+                                  if (hasLogs) ...[
+                                    const SizedBox(height: 3),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        if (hasError)
+                                          Container(
+                                            width: 4,
+                                            height: 4,
+                                            margin: const EdgeInsets.symmetric(
+                                              horizontal: 1,
+                                            ),
+                                            decoration: const BoxDecoration(
+                                              color: FaceAttendColors.danger,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                        if (hasPending)
+                                          Container(
+                                            width: 4,
+                                            height: 4,
+                                            margin: const EdgeInsets.symmetric(
+                                              horizontal: 1,
+                                            ),
+                                            decoration: const BoxDecoration(
+                                              color: FaceAttendColors.warning,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                        if (hasSynced)
+                                          Container(
+                                            width: 4,
+                                            height: 4,
+                                            margin: const EdgeInsets.symmetric(
+                                              horizontal: 1,
+                                            ),
+                                            decoration: const BoxDecoration(
+                                              color: FaceAttendColors.success,
+                                              shape: BoxShape.circle,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 )
-                .toList(),
-          ),
-        ),
-        const SizedBox(height: 8),
-
-        // Calendar Grid
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 7,
-              mainAxisSpacing: 6,
-              crossAxisSpacing: 6,
-              childAspectRatio: 1.0,
-            ),
-            itemCount: totalCells,
-            itemBuilder: (context, index) {
-              if (index < emptyPrefixCells) {
-                return const SizedBox();
-              }
-              final day = index - emptyPrefixCells + 1;
-              final date = DateTime(year, month, day);
-              final isSelected =
-                  date.year == _calendarSelectedDay.year &&
-                  date.month == _calendarSelectedDay.month &&
-                  date.day == _calendarSelectedDay.day;
-
-              final dayLogs = _getLogsForDate(date);
-              final hasLogs = dayLogs.isNotEmpty;
-
-              // Determine dots to show
-              final hasPending = dayLogs.any(
-                (l) => !l.isSynced && l.syncError == null,
-              );
-              final hasError = dayLogs.any((l) => l.syncError != null);
-              final hasSynced = dayLogs.any((l) => l.isSynced);
-
-              return InkWell(
-                onTap: () {
-                  setState(() {
-                    _calendarSelectedDay = date;
-                  });
-                },
-                borderRadius: BorderRadius.circular(12),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? FaceAttendColors.accent
-                        : (hasLogs
-                              ? FaceAttendColors.surfaceMuted
-                              : Colors.transparent),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color: isSelected
-                          ? FaceAttendColors.accent
-                          : (DateTime.now().year == date.year &&
-                                    DateTime.now().month == date.month &&
-                                    DateTime.now().day == date.day
-                                ? FaceAttendColors.accent.withValues(alpha: 0.5)
-                                : Colors.transparent),
-                      width: 1.5,
-                    ),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        '$day',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: isSelected
-                              ? FontWeight.w800
-                              : FontWeight.w600,
-                          color: isSelected
-                              ? Colors.white
-                              : (hasLogs
-                                    ? FaceAttendColors.ink
-                                    : FaceAttendColors.ink.withValues(
-                                        alpha: 0.8,
-                                      )),
-                        ),
-                      ),
-                      if (hasLogs) ...[
-                        const SizedBox(height: 3),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            if (hasError)
-                              Container(
-                                width: 4,
-                                height: 4,
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 1,
-                                ),
-                                decoration: const BoxDecoration(
-                                  color: FaceAttendColors.danger,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            if (hasPending)
-                              Container(
-                                width: 4,
-                                height: 4,
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 1,
-                                ),
-                                decoration: const BoxDecoration(
-                                  color: FaceAttendColors.warning,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                            if (hasSynced)
-                              Container(
-                                width: 4,
-                                height: 4,
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 1,
-                                ),
-                                decoration: const BoxDecoration(
-                                  color: FaceAttendColors.success,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
+              : const SizedBox.shrink(),
         ),
         const Divider(color: FaceAttendColors.border, height: 24),
 
@@ -1057,6 +1213,7 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
       );
     }
     return ListView.builder(
+      controller: _calendarScrollController,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: dayLogs.length,
       itemBuilder: (context, index) {

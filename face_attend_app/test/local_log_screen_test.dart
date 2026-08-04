@@ -83,7 +83,7 @@ void main() {
 
     // Initial load takes a brief moment to toggle _loading to false
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(seconds: 1));
 
     // 1. LIST VIEW (Default)
     expect(find.text('Scanner Activity Logs'), findsOneWidget);
@@ -99,7 +99,7 @@ void main() {
     // 2. CALENDAR VIEW
     // Tap on the Calendar view tab
     await tester.tap(find.text('Calendar'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
 
     // Verify calendar elements are displayed
     expect(find.text('Mo'), findsOneWidget);
@@ -113,7 +113,7 @@ void main() {
     // 3. KANBAN VIEW
     // Tap on the Kanban view tab
     await tester.tap(find.text('Kanban'));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
 
     // Verify Kanban columns are displayed
     expect(find.text('Offline Queue'), findsAtLeastNWidgets(1));

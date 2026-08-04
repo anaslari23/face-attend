@@ -14,6 +14,11 @@ class FaceScanView extends StatefulWidget {
     this.faceOverlays = const [],
     this.faceReady = false,
     this.prompt = 'Look straight and keep your face inside the frame.',
+    this.matchingName,
+    this.matchingPercent,
+    this.threshold = 0.70,
+    this.brightness = 120.0,
+    this.blinkDetected = false,
     super.key,
   });
 
@@ -26,6 +31,11 @@ class FaceScanView extends StatefulWidget {
   final List<FaceOverlay> faceOverlays;
   final bool faceReady;
   final String prompt;
+  final String? matchingName;
+  final double? matchingPercent;
+  final double threshold;
+  final double brightness;
+  final bool blinkDetected;
 
   @override
   State<FaceScanView> createState() => _FaceScanViewState();
@@ -80,10 +90,24 @@ class _FaceScanViewState extends State<FaceScanView>
                     widget.camera?.description.lensDirection ==
                     CameraLensDirection.front,
                 ready: widget.faceReady,
+                matchingName: widget.matchingName,
+                matchingPercent: widget.matchingPercent,
                 animationValue: _scanController.value,
               );
             },
           ),
+          if (initialized)
+            Positioned(
+              top: 20,
+              left: 16,
+              right: 16,
+              child: _DiagnosticOverlay(
+                minScore: widget.threshold,
+                brightness: widget.brightness,
+                blinkDetected: widget.blinkDetected,
+                faceAligned: widget.faceReady || widget.faceBounds != null,
+              ),
+            ),
           Positioned(
             left: 16,
             right: 16,
@@ -145,6 +169,8 @@ class _FaceGuide extends StatelessWidget {
     required this.isFrontCamera,
     required this.ready,
     required this.animationValue,
+    this.matchingName,
+    this.matchingPercent,
   });
 
   final Rect? faceBounds;
@@ -153,6 +179,8 @@ class _FaceGuide extends StatelessWidget {
   final bool isFrontCamera;
   final bool ready;
   final double animationValue;
+  final String? matchingName;
+  final double? matchingPercent;
 
   @override
   Widget build(BuildContext context) {
@@ -169,6 +197,8 @@ class _FaceGuide extends StatelessWidget {
           ready: ready,
           animationValue: animationValue,
           scanColor: scanColor,
+          matchingName: matchingName,
+          matchingPercent: matchingPercent,
         ),
       ),
     );
@@ -184,6 +214,8 @@ class _FaceGuidePainter extends CustomPainter {
     required this.ready,
     required this.animationValue,
     required this.scanColor,
+    this.matchingName,
+    this.matchingPercent,
   });
 
   final Rect? faceBounds;
@@ -193,6 +225,8 @@ class _FaceGuidePainter extends CustomPainter {
   final bool ready;
   final double animationValue;
   final Color scanColor;
+  final String? matchingName;
+  final double? matchingPercent;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -240,7 +274,7 @@ class _FaceGuidePainter extends CustomPainter {
       faceRect.center.dy.clamp(radius + 10, size.height - radius - 10),
     );
 
-    final Color color = ready ? const Color(0xFF30D158) : scanColor;
+    final Color color = (ready || matchingPercent != null) ? const Color(0xFF30D158) : scanColor;
 
     //final cutoutPath = Path()..addOval(Rect.fromCircle(center: center, radius: radius));
 
@@ -252,11 +286,16 @@ class _FaceGuidePainter extends CustomPainter {
     canvas.drawCircle(center, radius, borderPaint);
 
     // Draw label
-    final String labelText = ready
-        ? "MATCHED"
-        : (isFaceDetected || faceOverlays.isNotEmpty
-              ? "SCANNING..."
-              : "ALIGN FACE");
+    final String labelText;
+    if (matchingName != null && matchingPercent != null) {
+      labelText = "${matchingName!.toUpperCase()} (${matchingPercent!.toStringAsFixed(1)}%)";
+    } else {
+      labelText = ready
+          ? "MATCHED"
+          : (isFaceDetected || faceOverlays.isNotEmpty
+                ? "SCANNING..."
+                : "ALIGN FACE");
+    }
     _drawLabel(canvas, center, radius, labelText, color);
   }
 
@@ -279,7 +318,7 @@ class _FaceGuidePainter extends CustomPainter {
       textDirection: TextDirection.ltr,
       maxLines: 1,
       ellipsis: '...',
-    )..layout(maxWidth: 180);
+    )..layout(maxWidth: 240);
 
     final labelRect = RRect.fromRectAndRadius(
       Rect.fromLTWH(
@@ -303,7 +342,9 @@ class _FaceGuidePainter extends CustomPainter {
       oldDelegate.isFrontCamera != isFrontCamera ||
       oldDelegate.ready != ready ||
       oldDelegate.animationValue != animationValue ||
-      oldDelegate.scanColor != scanColor;
+      oldDelegate.scanColor != scanColor ||
+      oldDelegate.matchingName != matchingName ||
+      oldDelegate.matchingPercent != matchingPercent;
 }
 
 class FaceOverlay {
@@ -394,6 +435,145 @@ class _ScanPrompt extends StatelessWidget {
               ],
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DiagnosticOverlay extends StatelessWidget {
+  const _DiagnosticOverlay({
+    required this.minScore,
+    required this.brightness,
+    required this.blinkDetected,
+    required this.faceAligned,
+  });
+
+  final double minScore;
+  final double brightness;
+  final bool blinkDetected;
+  final bool faceAligned;
+
+  @override
+  Widget build(BuildContext context) {
+    // Determine lighting status
+    final String lightingText;
+    final Color lightingColor;
+    final IconData lightingIcon;
+    if (brightness < 55) {
+      lightingText = 'Too Dark';
+      lightingColor = const Color(0xFFFFCC00); // Amber warning
+      lightingIcon = Icons.wb_twilight_outlined;
+    } else if (brightness > 230) {
+      lightingText = 'Too Bright';
+      lightingColor = const Color(0xFFFFCC00); // Amber warning
+      lightingIcon = Icons.light_mode;
+    } else {
+      lightingText = 'Perfect';
+      lightingColor = const Color(0xFF30D158); // Green success
+      lightingIcon = Icons.wb_sunny_outlined;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1E1E1E).withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white10),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text(
+                'BIOMETRIC DIAGNOSTICS',
+                style: TextStyle(
+                  color: Colors.white60,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF30D158).withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  'Min Match: ${(minScore * 100).toStringAsFixed(0)}%',
+                  style: const TextStyle(
+                    color: Color(0xFF30D158),
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildFeedbackItem(
+                icon: lightingIcon,
+                label: 'Lighting',
+                value: lightingText,
+                color: lightingColor,
+              ),
+              _buildFeedbackItem(
+                icon: blinkDetected
+                    ? Icons.check_circle_outline
+                    : Icons.remove_red_eye_outlined,
+                label: 'Blink Check',
+                value: blinkDetected ? 'Detected' : 'Blink to verify',
+                color: blinkDetected
+                    ? const Color(0xFF30D158)
+                    : const Color(0xFFFFCC00),
+              ),
+              _buildFeedbackItem(
+                icon: faceAligned ? Icons.portrait : Icons.face_retouching_natural,
+                label: 'Alignment',
+                value: faceAligned ? 'Aligned' : 'Position Face',
+                color: faceAligned
+                    ? const Color(0xFF30D158)
+                    : const Color(0xFFFFCC00),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeedbackItem({
+    required IconData icon,
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Expanded(
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 20),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white38, fontSize: 9),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );

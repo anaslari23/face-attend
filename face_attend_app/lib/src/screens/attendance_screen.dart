@@ -46,6 +46,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   int _stableFrames = 0;
   int _scanGeneration = 0;
   final Map<int, DateTime> _lastPunchByEmployee = {};
+  String? _matchingName;
+  double? _matchingPercent;
+  bool _blinkDetected = false;
+  bool _eyesClosedTransition = false;
+  DateTime? _lastFaceSeenTime;
+  double _currentBrightness = 120.0;
 
   bool get _busy =>
       _scannerState == _ScannerState.loading ||
@@ -168,6 +174,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     _processingFrame = true;
 
     try {
+      final brightness = _calculateFrameBrightness(image);
       final result = await _faceService.detectCameraFaces(
         image: image,
         camera: camera.description,
@@ -183,7 +190,35 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       final singleFace = result.faces.length == 1;
       final nextStableFrames = singleFace ? _stableFrames + 1 : 0;
       final ready = nextStableFrames >= _stableFrameTarget;
+
+      // Track blink detection state
+      bool blinkDetected = _blinkDetected;
+      bool eyesClosedTransition = _eyesClosedTransition;
+      DateTime? lastFaceSeenTime = _lastFaceSeenTime;
+      final nowTime = DateTime.now();
+
+      if (singleFace) {
+        if (lastFaceSeenTime != null &&
+            nowTime.difference(lastFaceSeenTime) < const Duration(milliseconds: 1500) &&
+            eyesClosedTransition) {
+          blinkDetected = true;
+          debugPrint("BLINK DETECTED via face reappearance transition");
+        }
+        lastFaceSeenTime = nowTime;
+        eyesClosedTransition = false;
+      } else {
+        if (lastFaceSeenTime != null &&
+            nowTime.difference(lastFaceSeenTime) < const Duration(milliseconds: 800)) {
+          eyesClosedTransition = true;
+        }
+      }
+
       setState(() {
+        _currentBrightness = brightness;
+        _blinkDetected = blinkDetected;
+        _eyesClosedTransition = eyesClosedTransition;
+        _lastFaceSeenTime = lastFaceSeenTime;
+
         _stableFrames = nextStableFrames;
         _faceBounds = singleFace ? result.faces.first.boundingBox : null;
         _faceImageSize = result.imageSize;
@@ -270,6 +305,47 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       }
       final match = await _matcher.matchImagePath(imagePath);
       await _deleteImageQuietly(imagePath);
+
+      final targetPercent = (match.confidence * 100).clamp(0, 100).toDouble();
+      final animEmployeeName = match.employeeName;
+
+      if (mounted) {
+        setState(() {
+          _matchingName = animEmployeeName ?? 'Unknown';
+          _matchingPercent = 0.0;
+        });
+      }
+
+      final animationFuture = Future(() async {
+        const steps = 15;
+        const stepDuration = Duration(milliseconds: 40);
+        for (int i = 0; i <= steps; i++) {
+          if (!mounted) break;
+          final currentPercent = (targetPercent * i) / steps;
+          setState(() {
+            _matchingPercent = currentPercent;
+            if (animEmployeeName != null) {
+              _message = 'Verifying: $animEmployeeName (${currentPercent.toStringAsFixed(1)}%)';
+            } else {
+              _message = 'Verifying... (${currentPercent.toStringAsFixed(1)}%)';
+            }
+          });
+          await Future.delayed(stepDuration);
+        }
+        if (mounted) {
+          setState(() {
+            _matchingPercent = targetPercent;
+            if (match.matched && animEmployeeName != null) {
+              _message = 'Matched: $animEmployeeName (${targetPercent.toStringAsFixed(1)}%)';
+            } else if (animEmployeeName != null) {
+              _message = 'Try again: confidence too low (${targetPercent.toStringAsFixed(1)}%)';
+            } else {
+              _message = 'No face match found';
+            }
+          });
+        }
+        await Future.delayed(const Duration(milliseconds: 650));
+      });
       final device = await _deviceService.identity();
       final appVersion = await _deviceService.appVersion();
       final deviceId = widget.session.deviceId.isNotEmpty
@@ -307,7 +383,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       final logId =
           'log_${now.millisecondsSinceEpoch}_${match.employeeId ?? 0}';
 
-      final backendTimestamp = now.toUtc().toIso8601String();
+      final backendTimestamp = LocalLogService.instance.formatBackendTimestamp(now);
       final fullLogData = {
         'local_log_id': logId,
         'local_timestamp': now.toIso8601String(),
@@ -391,6 +467,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       if (accepted && !inCooldown) {
         _lastPunchByEmployee[match.employeeId!] = DateTime.now();
       }
+      await animationFuture;
       if (!mounted) return;
       _clearFaceStateForDisplay();
       _showSingleFaceLabel(match, punch);
@@ -452,7 +529,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
     final now = DateTime.now();
     final logId = 'log_${now.millisecondsSinceEpoch}_err';
-    final backendTimestamp = now.toUtc().toIso8601String();
+    final backendTimestamp = LocalLogService.instance.formatBackendTimestamp(now);
     final fullLogData = {
       'local_log_id': logId,
       'local_timestamp': now.toIso8601String(),
@@ -543,11 +620,30 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     _faceOverlays = const [];
     _stableFrames = 0;
     _autoCaptureStarted = false;
+    _matchingName = null;
+    _matchingPercent = null;
+    _blinkDetected = false;
+    _eyesClosedTransition = false;
+    _lastFaceSeenTime = null;
+    _currentBrightness = 120.0;
   }
 
   void _clearFaceStateForDisplay() {
     if (!mounted) return;
     setState(_clearFaceState);
+  }
+
+  double _calculateFrameBrightness(CameraImage image) {
+    if (image.planes.isEmpty) return 120.0;
+    final bytes = image.planes[0].bytes;
+    int sum = 0;
+    int count = 0;
+    // Sample every 128th byte for high performance
+    for (int i = 0; i < bytes.length; i += 128) {
+      sum += bytes[i];
+      count++;
+    }
+    return count > 0 ? sum / count : 120.0;
   }
 
   void _clearStaleDetectionIfNeeded() {
@@ -638,8 +734,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               faceBounds: _faceBounds,
               faceImageSize: _faceImageSize,
               faceOverlays: _faceOverlays,
-              faceReady: _scannerState == _ScannerState.ready,
-              prompt: _busy ? 'Processing biometric scan...' : _message,
+              faceReady: _scannerState == _ScannerState.ready || _matchingPercent != null,
+              prompt: _matchingPercent != null
+                  ? 'Verifying identity...'
+                  : (_busy ? 'Processing biometric scan...' : _message),
+              matchingName: _matchingName,
+              matchingPercent: _matchingPercent,
+              progress: _matchingPercent?.round(),
+              target: _matchingPercent != null ? 100 : null,
+              threshold: _matcher.threshold,
+              brightness: _currentBrightness,
+              blinkDetected: _blinkDetected,
             ),
           ),
           Container(

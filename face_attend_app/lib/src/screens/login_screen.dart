@@ -28,7 +28,7 @@ class _LoginScreenState extends State<LoginScreen>
   bool _fetchingDb = false;
   List<String>? _availableDbs;
   late final AnimationController _meshController;
-  String? _deviceId;
+  // String? _deviceId;
 
   @override
   void initState() {
@@ -45,7 +45,7 @@ class _LoginScreenState extends State<LoginScreen>
       final device = await DeviceService().identity();
       if (mounted) {
         setState(() {
-          _deviceId = device.id;
+          // _deviceId = device.id;
         });
       }
       debugPrint('\n=========================================');

@@ -15,7 +15,6 @@ import 'src/services/secure_session_store.dart';
 import 'src/theme/app_theme.dart';
 import 'src/widgets/secret_token_dialog.dart';
 
-
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -74,7 +73,6 @@ Future<void> main() async {
       debugPrint("Device ID          : ${session.deviceId}");
       debugPrint("Device Name        : ${session.deviceName}");
       debugPrint("Generated Device ID: ${session.generatedDeviceId}");
-      
     }
 
     debugPrint("==========================================");
@@ -476,11 +474,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           ),
         ),
         actions: [
-          IconButton(
-            onPressed: () => SecretTokenDialog.show(context),
-            tooltip: 'Database Inspector (Secret Token)',
-            icon: const Icon(Icons.admin_panel_settings, color: Colors.amber),
-          ),
+          // IconButton(
+          //   onPressed: () => SecretTokenDialog.show(context),
+          //   tooltip: 'Database Inspector (Secret Token)',
+          //   icon: const Icon(Icons.admin_panel_settings, color: Colors.amber),
+          // ),
           IconButton(
             onPressed: _refresh,
             tooltip: 'Refresh Status',
@@ -501,7 +499,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             icon: const Icon(Icons.settings),
           ),
         ],
-
       ),
       body: SafeArea(
         child: AnimatedBuilder(

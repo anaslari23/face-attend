@@ -5,6 +5,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import 'package:sqflite/sqflite.dart';
+
 import '../api/odoo_face_attendance_client.dart';
 import '../models/session.dart';
 import 'database_helper.dart';
@@ -28,6 +30,14 @@ class OnDeviceFaceMatcher {
   final OdooFaceAttendanceClient _client;
   final FaceRecognitionService _faceService;
   LocalFaceIndex? _index;
+
+  double get threshold {
+    final idx = _index;
+    if (idx != null && idx.threshold > 0) {
+      return idx.threshold;
+    }
+    return defaultThreshold;
+  }
 
   Future<FaceIndexSyncResult> sync() async {
     final stored = await LocalFaceIndexStore.read();
@@ -341,17 +351,37 @@ class LocalFaceIndexStore {
 
   static Future<void> write(LocalFaceIndex index) async {
     try {
-      // 1. Save to SQLite
-      for (final rec in index.records) {
-        await DatabaseHelper.instance.saveFaceRecord(
-          employeeId: rec.employeeId,
-          employeeName: rec.employeeName,
-          department: rec.department,
-          avatarWriteDate: rec.avatarWriteDate,
-          primaryEmbedding: rec.primaryEmbedding,
-          adaptiveEmbeddings: rec.adaptiveEmbeddings,
-        );
-      }
+      // 1. Save to SQLite inside a transaction to ensure atomicity and cleanup obsolete records
+      final db = await DatabaseHelper.instance.database;
+      await db.transaction((txn) async {
+        if (index.records.isEmpty) {
+          await txn.delete('face_embeddings');
+        } else {
+          final ids = index.records.map((r) => r.employeeId).toList();
+          final placeholders = List.filled(ids.length, '?').join(',');
+          await txn.delete(
+            'face_embeddings',
+            where: 'employee_id NOT IN ($placeholders)',
+            whereArgs: ids,
+          );
+        }
+
+        for (final rec in index.records) {
+          await txn.insert(
+            'face_embeddings',
+            {
+              'employee_id': rec.employeeId,
+              'employee_name': rec.employeeName,
+              'department': rec.department,
+              'avatar_write_date': rec.avatarWriteDate,
+              'primary_embedding_json': jsonEncode(rec.primaryEmbedding),
+              'adaptive_embeddings_json': jsonEncode(rec.adaptiveEmbeddings),
+              'updated_at': DateTime.now().toIso8601String(),
+            },
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+      });
 
       // 2. JSON Fallback
       final directory = await getApplicationSupportDirectory();
@@ -549,6 +579,7 @@ class LocalFaceMatchResult {
     double? secondBestConfidence,
     String? embeddingSource,
     bool needsReview = false,
+    bool livenessPassed = true,
   }) {
     return LocalFaceMatchResult(
       matched: false,
@@ -560,7 +591,7 @@ class LocalFaceMatchResult {
       secondBestConfidence: secondBestConfidence,
       embeddingSource: embeddingSource,
       needsReview: needsReview,
-      livenessPassed: false,
+      livenessPassed: livenessPassed,
     );
   }
 }

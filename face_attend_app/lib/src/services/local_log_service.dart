@@ -76,10 +76,10 @@ class LocalLogService {
     debugPrint("File Exists: $exists");
 
     if (exists) {
-      final content = await file.readAsString();
-      debugPrint("========== LOCAL LOG FILE CONTENT ==========");
-      debugPrint(content);
-      debugPrint("===========================================");
+      // final content = await file.readAsString();
+      // debugPrint("========== LOCAL LOG FILE CONTENT ==========");
+      // debugPrint(content);
+      // debugPrint("===========================================");
     } else {
       debugPrint("Local log file does not exist yet.");
     }
@@ -211,17 +211,11 @@ class LocalLogService {
       payload: payload,
     );
 
-    // 2. Update memory cache and JSON fallback
+    // 2. Invalidate cache so the next getLogs() reads fresh data from SQLite
+    _cache = null;
+
+    // 3. Update memory cache and JSON fallback
     final logs = await getLogs();
-    final newLog = LocalPunchLog(
-      id: id,
-      timestamp: timestamp,
-      payload: payload,
-      employeeName: employeeName,
-      isSynced: isSynced,
-      syncError: syncError,
-    );
-    logs.insert(0, newLog);
     await saveLogs(logs);
   }
 
@@ -237,7 +231,10 @@ class LocalLogService {
       syncError: syncError,
     );
 
-    // 2. Update in memory cache & JSON
+    // 2. Invalidate cache so the next getLogs() reads fresh data from SQLite
+    _cache = null;
+
+    // 3. Update memory cache & JSON
     final logs = await getLogs();
     final index = logs.indexWhere((log) => log.id == id);
     if (index != -1) {
@@ -247,9 +244,15 @@ class LocalLogService {
     }
   }
 
-
   String _backendTimestamp(DateTime timestamp) {
-    return timestamp.toUtc().toIso8601String();
+    final utc = timestamp.toUtc();
+    final y = utc.year.toString().padLeft(4, '0');
+    final m = utc.month.toString().padLeft(2, '0');
+    final d = utc.day.toString().padLeft(2, '0');
+    final h = utc.hour.toString().padLeft(2, '0');
+    final min = utc.minute.toString().padLeft(2, '0');
+    final s = utc.second.toString().padLeft(2, '0');
+    return '$y-$m-$d $h:$min:$s';
   }
 
   Map<String, dynamic> _fullLogData(
@@ -267,8 +270,7 @@ class LocalLogService {
     };
   }
 
-  @visibleForTesting
-  String backendTimestampForTesting(DateTime timestamp) {
+  String formatBackendTimestamp(DateTime timestamp) {
     return _backendTimestamp(timestamp);
   }
 
@@ -392,6 +394,8 @@ class LocalLogService {
     }
 
     if (needsSave) {
+      // Invalidate cache before saving so the UI reads fresh data after sync
+      _cache = null;
       await saveLogs(logs);
     }
 

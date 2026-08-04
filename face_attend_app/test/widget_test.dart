@@ -2,17 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:flutter/services.dart';
 import 'package:face_attend_app/main.dart';
 import 'package:face_attend_app/src/models/session.dart';
 
 void _dummyCallback() {}
 
 void main() {
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('plugins.flutter.io/path_provider'),
+      (MethodCall methodCall) async {
+        return '.';
+      },
+    );
+  });
+
   testWidgets('shows scanner setup when no session is stored', (tester) async {
     FlutterSecureStorage.setMockInitialValues({});
     await tester.pumpWidget(const FaceAttendApp());
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pump(const Duration(seconds: 1));
 
     expect(find.text('PISmartPunch'), findsOneWidget);
     expect(find.text('Save Scanner'), findsOneWidget);

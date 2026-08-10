@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart' as mp;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'arcface_embedding_service.dart';
@@ -31,6 +32,50 @@ class FaceRecognitionService {
   Future<FaceEmbeddingResult> embedImagePath(String imagePath) async {
     final bytes = await File(imagePath).readAsBytes();
     return embedImageBytes(bytes);
+  }
+
+  Future<List<FaceEmbeddingResult>> embedAllFacesFromImagePath(String imagePath) async {
+    final bytes = await File(imagePath).readAsBytes();
+    return embedAllFacesFromBytes(bytes);
+  }
+
+  Future<List<FaceEmbeddingResult>> embedAllFacesFromBytes(Uint8List imageBytes) async {
+    final detector = await _readyDetector();
+    final faces = await detector.detectFacesFromBytes(
+      imageBytes,
+      mode: mp.FaceDetectionMode.full,
+    );
+    if (faces.isEmpty) return [];
+
+    final results = <FaceEmbeddingResult>[];
+    for (final face in faces) {
+      final landmarks = face.landmarks;
+      if (landmarks.leftEye == null ||
+          landmarks.rightEye == null ||
+          landmarks.noseTip == null ||
+          landmarks.mouth == null) {
+        continue;
+      }
+      try {
+        final box = face.boundingBox;
+        final rect = Rect.fromLTRB(box.left, box.top, box.right, box.bottom);
+        final embedding = await _arcFace.embed(
+          imageBytes: imageBytes,
+          face: face,
+        );
+        results.add(
+          FaceEmbeddingResult.success(
+            embedding: embedding,
+            qualityScore: 1.0,
+            boundingBox: rect,
+            imageSize: Size(rect.width, rect.height),
+          ),
+        );
+      } catch (error) {
+        debugPrint('ArcFace embedding error for face: $error');
+      }
+    }
+    return results;
   }
 
   Future<FaceEmbeddingResult> embedImageBytes(Uint8List imageBytes) async {

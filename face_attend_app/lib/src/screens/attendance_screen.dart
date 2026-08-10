@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 
 import '../api/odoo_face_attendance_client.dart';
 import '../models/session.dart';
-import '../screens/result_screen.dart';
 import '../services/device_service.dart';
 import '../services/face_recognition_service.dart';
 import '../services/local_log_service.dart';
@@ -23,9 +22,9 @@ class AttendanceScreen extends StatefulWidget {
 }
 
 class _AttendanceScreenState extends State<AttendanceScreen> {
-  static const _analysisInterval = Duration(milliseconds: 250);
+  static const _analysisInterval = Duration(milliseconds: 100);
   static const _detectionWatchdogTimeout = Duration(seconds: 2);
-  static const _stableFrameTarget = 5;
+  static const _stableFrameTarget = 2;
   static const _employeePunchCooldown = Duration(minutes: 2);
 
   final _faceService = FaceRecognitionService();
@@ -52,6 +51,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   bool _eyesClosedTransition = false;
   DateTime? _lastFaceSeenTime;
   double _currentBrightness = 120.0;
+  _KioskFeedback? _kioskFeedback;
+  Timer? _kioskFeedbackTimer;
 
   bool get _busy =>
       _scannerState == _ScannerState.loading ||
@@ -106,17 +107,26 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       await _faceService.initialize();
       if (mounted) {
         setState(() {
-          _message = 'Syncing employee faces';
+          _message = 'Loading scanner...';
           _scannerState = _ScannerState.loading;
         });
       }
-      final sync = await _matcher.sync();
-      if (sync.indexedEmployees == 0) {
-        throw StateError(
-          sync.failures.isEmpty
-              ? 'No employee avatars found in Odoo'
-              : 'No usable employee faces found. ${sync.failures.first}',
-        );
+      var index = await _matcher.readyIndex();
+      if (index.records.isEmpty) {
+        if (mounted) {
+          setState(() {
+            _message = 'Initial employee face sync...';
+          });
+        }
+        final sync = await _matcher.sync();
+        index = await _matcher.readyIndex();
+        if (index.records.isEmpty) {
+          throw StateError(
+            sync.failures.isEmpty
+                ? 'No employee avatars found in Odoo'
+                : 'No usable employee faces found. ${sync.failures.first}',
+          );
+        }
       }
       await _startFaceDetection();
       if (!mounted) return;
@@ -138,6 +148,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   void dispose() {
     _detectionWatchdog?.cancel();
+    _kioskFeedbackTimer?.cancel();
     if (_camera?.value.isStreamingImages == true) {
       _camera?.stopImageStream();
     }
@@ -187,8 +198,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         return;
       }
 
-      final singleFace = result.faces.length == 1;
-      final nextStableFrames = singleFace ? _stableFrames + 1 : 0;
+      final hasFaces = result.faces.isNotEmpty;
+      final nextStableFrames = hasFaces ? _stableFrames + 1 : 0;
       final ready = nextStableFrames >= _stableFrameTarget;
 
       // Track blink detection state
@@ -197,7 +208,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       DateTime? lastFaceSeenTime = _lastFaceSeenTime;
       final nowTime = DateTime.now();
 
-      if (singleFace) {
+      if (hasFaces) {
         if (lastFaceSeenTime != null &&
             nowTime.difference(lastFaceSeenTime) < const Duration(milliseconds: 1500) &&
             eyesClosedTransition) {
@@ -220,18 +231,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         _lastFaceSeenTime = lastFaceSeenTime;
 
         _stableFrames = nextStableFrames;
-        _faceBounds = singleFace ? result.faces.first.boundingBox : null;
+        _faceBounds = hasFaces ? result.faces.first.boundingBox : null;
         _faceImageSize = result.imageSize;
-        _faceOverlays = singleFace
-            ? [
-                FaceOverlay(
-                  bounds: result.faces.first.boundingBox,
-                  ready: ready,
-                  label: ready ? 'Scanning' : null,
-                ),
-              ]
-            : const [];
-        _message = _messageForSingleFaceResult(result, ready);
+        _faceOverlays = result.faces
+            .map(
+              (f) => FaceOverlay(
+                bounds: f.boundingBox,
+                ready: ready,
+                label: ready ? 'Scanning' : null,
+              ),
+            )
+            .toList();
+        _message = _messageForMultiFaceResult(result, ready);
         _scannerState = ready ? _ScannerState.ready : _ScannerState.detecting;
         _lastValidFrameAt = DateTime.now();
       });
@@ -252,11 +263,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
-  String _messageForSingleFaceResult(
+  String _messageForMultiFaceResult(
     MultiFaceValidationResult result,
     bool ready,
   ) {
-    if (result.faces.length > 1) return 'One person at a time';
+    if (result.faces.length > 1) {
+      return ready
+          ? 'Scanning ${result.faces.length} faces'
+          : '${result.faces.length} faces in frame';
+    }
     if (ready) return 'Scanning';
     if (result.faces.length == 1) return 'Hold still';
     return result.message;
@@ -299,273 +314,194 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     try {
       if (mounted) {
         setState(() {
-          _message = 'Matching face on device';
+          _message = 'Matching faces...';
           _scannerState = _ScannerState.submitting;
         });
       }
-      final match = await _matcher.matchImagePath(imagePath);
+      final matches = await _matcher.matchAllFacesImagePath(imagePath);
       await _deleteImageQuietly(imagePath);
 
-      final targetPercent = (match.confidence * 100).clamp(0, 100).toDouble();
-      final animEmployeeName = match.employeeName;
-
-      if (mounted) {
-        setState(() {
-          _matchingName = animEmployeeName ?? 'Unknown';
-          _matchingPercent = 0.0;
-        });
-      }
-
-      final animationFuture = Future(() async {
-        const steps = 15;
-        const stepDuration = Duration(milliseconds: 40);
-        for (int i = 0; i <= steps; i++) {
-          if (!mounted) break;
-          final currentPercent = (targetPercent * i) / steps;
-          setState(() {
-            _matchingPercent = currentPercent;
-            if (animEmployeeName != null) {
-              _message = 'Verifying: $animEmployeeName (${currentPercent.toStringAsFixed(1)}%)';
-            } else {
-              _message = 'Verifying... (${currentPercent.toStringAsFixed(1)}%)';
-            }
-          });
-          await Future.delayed(stepDuration);
-        }
-        if (mounted) {
-          setState(() {
-            _matchingPercent = targetPercent;
-            if (match.matched && animEmployeeName != null) {
-              _message = 'Matched: $animEmployeeName (${targetPercent.toStringAsFixed(1)}%)';
-            } else if (animEmployeeName != null) {
-              _message = 'Try again: confidence too low (${targetPercent.toStringAsFixed(1)}%)';
-            } else {
-              _message = 'No face match found';
-            }
-          });
-        }
-        await Future.delayed(const Duration(milliseconds: 650));
-      });
       final device = await _deviceService.identity();
       final appVersion = await _deviceService.appVersion();
       final deviceId = widget.session.deviceId.isNotEmpty
           ? widget.session.deviceId
           : device.id;
-      final liveAccepted = match.livenessPassed;
-      final accepted =
-          match.matched && match.employeeId != null && liveAccepted;
-      final inCooldown = accepted && _isEmployeeInCooldown(match.employeeId!);
-
-      final Map<String, dynamic> payload = {
-        'accepted': accepted && !inCooldown,
-        'matched_employee_id': match.employeeId,
-        'match_score': match.confidence,
-        'threshold': match.threshold,
-        'device_id': deviceId,
-        'app_version': appVersion,
-        'failure_reason': accepted
-            ? inCooldown
-                  ? 'cooldown'
-                  : null
-            : liveAccepted
-            ? match.reason ?? 'below_threshold'
-            : 'liveness_failed',
-        'second_best_confidence': match.secondBestConfidence,
-        'embedding_source': match.embeddingSource,
-        'needs_review': match.needsReview,
-        'liveness_passed': match.livenessPassed,
-        'liveness_score': match.livenessScore,
-        'spoof_score': match.livenessPassed ? 0.0 : 1.0,
-      };
 
       final now = DateTime.now();
-      final employeeName = match.employeeName ?? 'Unknown Employee';
-      final logId =
-          'log_${now.millisecondsSinceEpoch}_${match.employeeId ?? 0}';
+      final List<String> checkedInNames = [];
+      final List<String> cooldownNames = [];
 
-      final backendTimestamp = LocalLogService.instance.formatBackendTimestamp(now);
-      final fullLogData = {
-        'local_log_id': logId,
-        'local_timestamp': now.toIso8601String(),
-        'backend_timestamp': backendTimestamp,
-        'employee_name': employeeName,
-        'is_synced': false,
-        'sync_error': null,
-        'payload': payload,
-      };
+      for (var i = 0; i < matches.length; i++) {
+        final match = matches[i];
+        final liveAccepted = match.livenessPassed;
+        final accepted = match.matched && match.employeeId != null && liveAccepted;
+        final inCooldown =
+            accepted && (await _isEmployeeInCooldown(match.employeeId!));
+        final employeeName = match.employeeName ?? 'Unknown Employee';
 
-      // 1. Add log locally as unsynced
-      await LocalLogService.instance.addLog(
-        id: logId,
-        timestamp: now,
-        payload: payload,
-        employeeName: employeeName,
-        isSynced: false,
-      );
+        if (inCooldown) {
+          cooldownNames.add(employeeName);
+          continue; // Do not record duplicate cooldown entries in local logs or sync to backend
+        }
 
-      PunchResult punch;
-      try {
-        punch = await _client.punch(
-          accepted: payload['accepted'] as bool,
-          matchedEmployeeId: payload['matched_employee_id'] as int?,
-          matchScore: (payload['match_score'] as num).toDouble(),
-          threshold: (payload['threshold'] as num).toDouble(),
-          deviceId: payload['device_id'] as String,
-          appVersion: payload['app_version'] as String,
-          failureReason: payload['failure_reason'] as String?,
-          secondBestConfidence: payload['second_best_confidence'] != null
-              ? (payload['second_best_confidence'] as num).toDouble()
-              : null,
-          embeddingSource: payload['embedding_source'] as String?,
-          needsReview: payload['needs_review'] as bool,
-          livenessPassed: payload['liveness_passed'] as bool,
-          livenessScore: payload['liveness_score'] != null
-              ? (payload['liveness_score'] as num).toDouble()
-              : null,
-          spoofScore: (payload['spoof_score'] as num).toDouble(),
-          timestamp: backendTimestamp,
-          punchTime: backendTimestamp,
-          fullLogData: fullLogData,
-        );
-        // 2. Mark local log as synced
-        await LocalLogService.instance.updateLogSyncStatus(
-          logId,
-          isSynced: true,
-        );
-      } catch (error) {
-        // If API fails (e.g. network/offline), log the error but treat the match as temporarily valid if accepted locally
-        await LocalLogService.instance.updateLogSyncStatus(
-          logId,
+        final Map<String, dynamic> payload = {
+          'accepted': accepted,
+          'matched_employee_id': match.employeeId,
+          'match_score': match.confidence,
+          'threshold': match.threshold,
+          'device_id': deviceId,
+          'app_version': appVersion,
+          'failure_reason': accepted
+              ? null
+              : liveAccepted
+                  ? match.reason ?? 'below_threshold'
+                  : 'liveness_failed',
+          'second_best_confidence': match.secondBestConfidence,
+          'embedding_source': match.embeddingSource,
+          'needs_review': match.needsReview,
+          'liveness_passed': match.livenessPassed,
+          'liveness_score': match.livenessScore,
+          'spoof_score': match.livenessPassed ? 0.0 : 1.0,
+        };
+
+        final logId = 'log_${now.millisecondsSinceEpoch}_${match.employeeId ?? 0}_$i';
+        final backendTimestamp = LocalLogService.instance.formatBackendTimestamp(now);
+        final fullLogData = {
+          'local_log_id': logId,
+          'local_timestamp': now.toIso8601String(),
+          'backend_timestamp': backendTimestamp,
+          'employee_name': employeeName,
+          'is_synced': false,
+          'sync_error': null,
+          'payload': payload,
+        };
+
+        // 1. Instantly record punch locally in SQLite (Guaranteed zero data loss)
+        await LocalLogService.instance.addLog(
+          id: logId,
+          timestamp: now,
+          payload: payload,
+          employeeName: employeeName,
           isSynced: false,
-          syncError: error.toString(),
         );
 
-        if (accepted && !inCooldown) {
-          punch = PunchResult(
-            accepted: true,
-            punchType: 'offline_log',
-            employee: EmployeeProfile(
-              id: match.employeeId!,
-              name: employeeName,
-              faceRegistered: true,
-            ),
-          );
-        } else {
-          punch = PunchResult(
-            accepted: false,
-            employee: match.employeeId != null
-                ? EmployeeProfile(
-                    id: match.employeeId!,
-                    name: employeeName,
-                    faceRegistered: true,
-                  )
-                : null,
-          );
+        // 2. Fire-and-forget non-blocking network sync
+        unawaited(_syncPunchInBackground(
+          payload: payload,
+          backendTimestamp: backendTimestamp,
+          fullLogData: fullLogData,
+          logId: logId,
+        ));
+
+        if (accepted) {
+          _lastPunchByEmployee[match.employeeId!] = DateTime.now();
+          checkedInNames.add(employeeName);
         }
       }
 
-      if (accepted && !inCooldown) {
-        _lastPunchByEmployee[match.employeeId!] = DateTime.now();
-      }
-      await animationFuture;
       if (!mounted) return;
       _clearFaceStateForDisplay();
-      _showSingleFaceLabel(match, punch);
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => AttendanceResultScreen(
-            success: punch.accepted,
-            title: punch.accepted ? 'Thank you' : 'Face match failed',
-            message: punch.accepted
-                ? 'Your attendance has been recorded.'
-                : _messageForRejectedMatch(
-                    match,
-                    inCooldown ? 'cooldown' : match.reason,
-                  ),
-            time: DateTime.now(),
-            confidence: match.confidence,
-            primaryLabel: 'Scan Again',
-            primaryIcon: Icons.refresh,
-            popToFirst: false,
-            showRetry: false,
-          ),
+
+      final bool anySuccess = checkedInNames.isNotEmpty;
+      final String feedbackTitle;
+      final String feedbackSubtitle;
+
+      if (anySuccess) {
+        feedbackTitle = checkedInNames.length == 1
+            ? checkedInNames.first
+            : 'Checked In (${checkedInNames.length})';
+        feedbackSubtitle = checkedInNames.length == 1
+            ? 'Attendance recorded successfully'
+            : checkedInNames.join(', ');
+      } else if (cooldownNames.isNotEmpty) {
+        feedbackTitle = 'Already Checked';
+        feedbackSubtitle = 'Cooldown active for ${cooldownNames.join(', ')}';
+      } else {
+        feedbackTitle = 'Match Failed';
+        feedbackSubtitle = matches.isNotEmpty
+            ? _messageForRejectedMatch(matches.first, matches.first.reason)
+            : 'No registered face verified';
+      }
+
+      _showKioskFeedback(
+        _KioskFeedback(
+          success: anySuccess,
+          title: feedbackTitle,
+          subtitle: feedbackSubtitle,
+          confidence: matches.isNotEmpty ? matches.first.confidence : 0,
+          time: now,
         ),
       );
-      if (!mounted) return;
+
+      // Instantly resume camera detection for the next employees
       await _resetDetectionState(
-        message: punch.accepted
-            ? 'Scan complete'
-            : _messageForRejectedMatch(
-                match,
-                inCooldown ? 'cooldown' : match.reason,
-              ),
+        message: anySuccess
+            ? 'Recorded: ${checkedInNames.join(', ')}'
+            : 'Looking for faces',
       );
     } catch (error) {
       await _deleteImageQuietly(imagePath);
-      await _logRejectedScan(error.toString().replaceAll('uri=', 'url='));
+      debugPrint('Scan error: $error');
       if (!mounted) return;
       _pauseAfterScan(error.toString().replaceAll('uri=', 'url='));
     }
   }
 
-  Future<void> _logRejectedScan(String error) async {
-    final device = await _deviceService.identity();
-    final appVersion = await _deviceService.appVersion();
-    final deviceId = widget.session.deviceId.isNotEmpty
-        ? widget.session.deviceId
-        : device.id;
-
-    final Map<String, dynamic> payload = {
-      'accepted': false,
-      'matched_employee_id': null,
-      'match_score': 0.0,
-      'threshold': 0.70,
-      'device_id': deviceId,
-      'app_version': appVersion,
-      'failure_reason': error,
-      'liveness_passed': false,
-      'spoof_score': 1.0,
-    };
-
-    final now = DateTime.now();
-    final logId = 'log_${now.millisecondsSinceEpoch}_err';
-    final backendTimestamp = LocalLogService.instance.formatBackendTimestamp(now);
-    final fullLogData = {
-      'local_log_id': logId,
-      'local_timestamp': now.toIso8601String(),
-      'backend_timestamp': backendTimestamp,
-      'employee_name': 'System Error',
-      'is_synced': false,
-      'sync_error': null,
-      'payload': payload,
-    };
-
-    await LocalLogService.instance.addLog(
-      id: logId,
-      timestamp: now,
-      payload: payload,
-      employeeName: 'System Error',
-      isSynced: false,
-    );
-
+  Future<void> _syncPunchInBackground({
+    required Map<String, dynamic> payload,
+    required String backendTimestamp,
+    required Map<String, dynamic> fullLogData,
+    required String logId,
+  }) async {
     try {
       await _client.punch(
-        accepted: false,
-        matchScore: 0,
-        threshold: 0.70,
-        deviceId: deviceId,
-        appVersion: appVersion,
-        failureReason: error,
-        livenessPassed: false,
-        spoofScore: 1.0,
+        accepted: payload['accepted'] as bool,
+        matchedEmployeeId: payload['matched_employee_id'] as int?,
+        matchScore: (payload['match_score'] as num).toDouble(),
+        threshold: (payload['threshold'] as num).toDouble(),
+        deviceId: payload['device_id'] as String,
+        appVersion: payload['app_version'] as String,
+        failureReason: payload['failure_reason'] as String?,
+        secondBestConfidence: payload['second_best_confidence'] != null
+            ? (payload['second_best_confidence'] as num).toDouble()
+            : null,
+        embeddingSource: payload['embedding_source'] as String?,
+        needsReview: payload['needs_review'] as bool,
+        livenessPassed: payload['liveness_passed'] as bool,
+        livenessScore: payload['liveness_score'] != null
+            ? (payload['liveness_score'] as num).toDouble()
+            : null,
+        spoofScore: (payload['spoof_score'] as num).toDouble(),
         timestamp: backendTimestamp,
         punchTime: backendTimestamp,
         fullLogData: fullLogData,
       );
-      await LocalLogService.instance.updateLogSyncStatus(logId, isSynced: true);
-    } catch (_) {
-      // Keep as unsynced offline log
+      await LocalLogService.instance.updateLogSyncStatus(
+        logId,
+        isSynced: true,
+      );
+    } catch (error) {
+      await LocalLogService.instance.updateLogSyncStatus(
+        logId,
+        isSynced: false,
+        syncError: error.toString(),
+      );
     }
+  }
+
+  void _showKioskFeedback(_KioskFeedback feedback) {
+    _kioskFeedbackTimer?.cancel();
+    if (!mounted) return;
+    setState(() {
+      _kioskFeedback = feedback;
+    });
+    _kioskFeedbackTimer = Timer(const Duration(milliseconds: 1400), () {
+      if (mounted) {
+        setState(() {
+          _kioskFeedback = null;
+        });
+      }
+    });
   }
 
   void _pauseAfterScan(String message) {
@@ -597,20 +533,16 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     _startDetectionWatchdog();
   }
 
-  bool _isEmployeeInCooldown(int employeeId) {
+  Future<bool> _isEmployeeInCooldown(int employeeId) async {
     final lastPunch = _lastPunchByEmployee[employeeId];
-    if (lastPunch == null) return false;
-    return DateTime.now().difference(lastPunch) < _employeePunchCooldown;
-  }
-
-  void _showSingleFaceLabel(LocalFaceMatchResult match, PunchResult punch) {
-    if (!mounted) return;
-    setState(() {
-      _faceOverlays = const [];
-      _message = punch.accepted
-          ? '${punch.employee?.name ?? match.employeeName ?? 'Employee'} logged'
-          : _messageForMatchReason(match.reason);
-    });
+    if (lastPunch != null &&
+        DateTime.now().difference(lastPunch) < _employeePunchCooldown) {
+      return true;
+    }
+    return await LocalLogService.instance.isEmployeeInCooldown(
+      employeeId,
+      cooldown: _employeePunchCooldown,
+    );
   }
 
   void _clearFaceState() {
@@ -728,27 +660,47 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       body: Column(
         children: [
           Expanded(
-            child: FaceScanView(
-              camera: _camera,
-              message: _message,
-              faceBounds: _faceBounds,
-              faceImageSize: _faceImageSize,
-              faceOverlays: _faceOverlays,
-              faceReady: _scannerState == _ScannerState.ready || _matchingPercent != null,
-              prompt: _matchingPercent != null
-                  ? 'Verifying identity...'
-                  : (_busy ? 'Processing biometric scan...' : _message),
-              matchingName: _matchingName,
-              matchingPercent: _matchingPercent,
-              progress: _matchingPercent?.round(),
-              target: _matchingPercent != null ? 100 : null,
-              threshold: _matcher.threshold,
-              brightness: _currentBrightness,
-              blinkDetected: _blinkDetected,
+            child: Stack(
+              children: [
+                Positioned.fill(
+                  child: FaceScanView(
+                    camera: _camera,
+                    message: _message,
+                    faceBounds: _faceBounds,
+                    faceImageSize: _faceImageSize,
+                    faceOverlays: _faceOverlays,
+                    faceReady: _scannerState == _ScannerState.ready || _matchingPercent != null,
+                    prompt: _matchingPercent != null
+                        ? 'Verifying identity...'
+                        : (_busy ? 'Processing biometric scan...' : _message),
+                    matchingName: _matchingName,
+                    matchingPercent: _matchingPercent,
+                    progress: _matchingPercent?.round(),
+                    target: _matchingPercent != null ? 100 : null,
+                    threshold: _matcher.threshold,
+                    brightness: _currentBrightness,
+                    blinkDetected: _blinkDetected,
+                    showDiagnosticOverlay: true,
+                    showBottomPrompt: false,
+                  ),
+                ),
+                if (_kioskFeedback != null)
+                  Positioned(
+                    bottom: 16,
+                    left: 16,
+                    right: 16,
+                    child: _KioskFeedbackCard(
+                      feedback: _kioskFeedback!,
+                      onDismiss: () {
+                        setState(() => _kioskFeedback = null);
+                      },
+                    ),
+                  ),
+              ],
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: const BorderRadius.vertical(
@@ -756,94 +708,117 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 16,
                   offset: const Offset(0, -4),
                 ),
               ],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _message,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey.shade700,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Container(
-                  height: 52,
-                  decoration: BoxDecoration(
-                    gradient: _busy
-                        ? null
-                        : const LinearGradient(
-                            colors: [Color(0xFFEDA672), Color(0xFFE57C38)],
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                          ),
-                    color: _busy ? Colors.grey.shade300 : null,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: _busy
-                        ? null
-                        : [
-                            BoxShadow(
-                              color: const Color(
-                                0xFFEDA672,
-                              ).withValues(alpha: 0.25),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                  ),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+            child: SafeArea(
+              top: false,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: _busy
+                              ? const Color(0xFFEDA672)
+                              : (_scannerState == _ScannerState.detecting
+                                  ? const Color(0xFF10B981)
+                                  : Colors.grey.shade400),
+                        ),
                       ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          _message,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.grey.shade800,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  Container(
+                    height: 48,
+                    decoration: BoxDecoration(
+                      gradient: _busy
+                          ? null
+                          : const LinearGradient(
+                              colors: [Color(0xFFEDA672), Color(0xFFE57C38)],
+                              begin: Alignment.centerLeft,
+                              end: Alignment.centerRight,
+                            ),
+                      color: _busy ? Colors.grey.shade200 : null,
+                      borderRadius: BorderRadius.circular(14),
+                      boxShadow: _busy
+                          ? null
+                          : [
+                              BoxShadow(
+                                color: const Color(0xFFEDA672).withValues(alpha: 0.3),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                     ),
-                    onPressed: _canScan
-                        ? _scannerState == _ScannerState.paused ||
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.transparent,
+                        shadowColor: Colors.transparent,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                      onPressed: _canScan
+                          ? _scannerState == _ScannerState.paused ||
                                   _scannerState == _ScannerState.failed
                               ? () => _resetDetectionState()
                               : _scan
-                        : null,
-                    child: _busy
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Color(0xFFEDA672),
-                            ),
-                          )
-                        : Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.face, color: Colors.white),
-                              SizedBox(width: 8),
-                              Text(
-                                _scannerState == _ScannerState.paused ||
-                                        _scannerState == _ScannerState.failed
-                                    ? 'Scan Again'
-                                    : 'Scan Now',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
+                          : null,
+                      child: _busy
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.2,
+                                color: Color(0xFFE57C38),
                               ),
-                            ],
-                          ),
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                const Icon(Icons.face, color: Colors.white, size: 20),
+                                const SizedBox(width: 8),
+                                Text(
+                                  _scannerState == _ScannerState.paused ||
+                                          _scannerState == _ScannerState.failed
+                                      ? 'Scan Again'
+                                      : 'Scan Now',
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ],
+                            ),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -860,4 +835,137 @@ enum _ScannerState {
   submitting,
   paused,
   failed,
+}
+
+class _KioskFeedback {
+  final bool success;
+  final String title;
+  final String subtitle;
+  final double? confidence;
+  final DateTime time;
+
+  _KioskFeedback({
+    required this.success,
+    required this.title,
+    required this.subtitle,
+    this.confidence,
+    required this.time,
+  });
+}
+
+class _KioskFeedbackCard extends StatelessWidget {
+  const _KioskFeedbackCard({
+    required this.feedback,
+    this.onDismiss,
+  });
+
+  final _KioskFeedback feedback;
+  final VoidCallback? onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final success = feedback.success;
+    final color = success ? const Color(0xFF10B981) : const Color(0xFFEF4444);
+    final bgColor = success ? const Color(0xFF064E3B) : const Color(0xFF7F1D1D);
+    final timeStr =
+        '${feedback.time.hour.toString().padLeft(2, '0')}:${feedback.time.minute.toString().padLeft(2, '0')}:${feedback.time.second.toString().padLeft(2, '0')}';
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.0, end: 1.0),
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOutBack,
+      builder: (context, value, child) {
+        return Transform.scale(
+          scale: 0.88 + 0.12 * value,
+          child: Opacity(
+            opacity: value.clamp(0.0, 1.0),
+            child: child,
+          ),
+        );
+      },
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          decoration: BoxDecoration(
+            color: bgColor.withValues(alpha: 0.94),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color, width: 2),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.4),
+                blurRadius: 20,
+                spreadRadius: 2,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.25),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  success ? Icons.check_circle : Icons.error_outline,
+                  color: color,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      feedback.title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: 0.3,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      feedback.subtitle,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.88),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.35),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  timeStr,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

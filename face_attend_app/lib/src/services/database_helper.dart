@@ -37,6 +37,14 @@ class DatabaseHelper {
     return await openDatabase(
       path,
       version: _dbVersion,
+      onConfigure: (db) async {
+        try {
+          await db.execute('PRAGMA journal_mode = WAL;');
+          await db.execute('PRAGMA synchronous = NORMAL;');
+        } catch (e) {
+          debugPrint('SQLite PRAGMA configuration note: $e');
+        }
+      },
       onCreate: _onCreate,
     );
   }

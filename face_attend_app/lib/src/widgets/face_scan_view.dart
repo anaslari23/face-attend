@@ -16,9 +16,11 @@ class FaceScanView extends StatefulWidget {
     this.prompt = 'Look straight and keep your face inside the frame.',
     this.matchingName,
     this.matchingPercent,
-    this.threshold = 0.70,
+    this.threshold = 0.60,
     this.brightness = 120.0,
     this.blinkDetected = false,
+    this.showDiagnosticOverlay = true,
+    this.showBottomPrompt = true,
     super.key,
   });
 
@@ -36,6 +38,8 @@ class FaceScanView extends StatefulWidget {
   final double threshold;
   final double brightness;
   final bool blinkDetected;
+  final bool showDiagnosticOverlay;
+  final bool showBottomPrompt;
 
   @override
   State<FaceScanView> createState() => _FaceScanViewState();
@@ -96,9 +100,9 @@ class _FaceScanViewState extends State<FaceScanView>
               );
             },
           ),
-          if (initialized)
+          if (initialized && widget.showDiagnosticOverlay)
             Positioned(
-              top: 20,
+              top: 16,
               left: 16,
               right: 16,
               child: _DiagnosticOverlay(
@@ -108,16 +112,17 @@ class _FaceScanViewState extends State<FaceScanView>
                 faceAligned: widget.faceReady || widget.faceBounds != null,
               ),
             ),
-          Positioned(
-            left: 16,
-            right: 16,
-            bottom: 16,
-            child: _ScanPrompt(
-              message: initialized ? widget.prompt : widget.message,
-              progress: widget.progress,
-              target: widget.target,
+          if (widget.showBottomPrompt)
+            Positioned(
+              left: 16,
+              right: 16,
+              bottom: 16,
+              child: _ScanPrompt(
+                message: initialized ? widget.prompt : widget.message,
+                progress: widget.progress,
+                target: widget.target,
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -461,121 +466,109 @@ class _DiagnosticOverlay extends StatelessWidget {
     final Color lightingColor;
     final IconData lightingIcon;
     if (brightness < 55) {
-      lightingText = 'Too Dark';
-      lightingColor = const Color(0xFFFFCC00); // Amber warning
+      lightingText = 'Dark';
+      lightingColor = const Color(0xFFFFCC00);
       lightingIcon = Icons.wb_twilight_outlined;
     } else if (brightness > 230) {
-      lightingText = 'Too Bright';
-      lightingColor = const Color(0xFFFFCC00); // Amber warning
+      lightingText = 'Bright';
+      lightingColor = const Color(0xFFFFCC00);
       lightingIcon = Icons.light_mode;
     } else {
-      lightingText = 'Perfect';
-      lightingColor = const Color(0xFF30D158); // Green success
+      lightingText = 'Good';
+      lightingColor = const Color(0xFF30D158);
       lightingIcon = Icons.wb_sunny_outlined;
     }
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E).withValues(alpha: 0.8),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white10),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'BIOMETRIC DIAGNOSTICS',
-                style: TextStyle(
-                  color: Colors.white60,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF30D158).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  'Min Match: ${(minScore * 100).toStringAsFixed(0)}%',
-                  style: const TextStyle(
-                    color: Color(0xFF30D158),
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ],
+        color: const Color(0xFF1E1E1E).withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
           ),
-          const SizedBox(height: 10),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildFeedbackItem(
-                icon: lightingIcon,
-                label: 'Lighting',
-                value: lightingText,
-                color: lightingColor,
-              ),
-              _buildFeedbackItem(
-                icon: blinkDetected
-                    ? Icons.check_circle_outline
-                    : Icons.remove_red_eye_outlined,
-                label: 'Blink Check',
-                value: blinkDetected ? 'Detected' : 'Blink to verify',
-                color: blinkDetected
-                    ? const Color(0xFF30D158)
-                    : const Color(0xFFFFCC00),
-              ),
-              _buildFeedbackItem(
-                icon: faceAligned ? Icons.portrait : Icons.face_retouching_natural,
-                label: 'Alignment',
-                value: faceAligned ? 'Aligned' : 'Position Face',
-                color: faceAligned
-                    ? const Color(0xFF30D158)
-                    : const Color(0xFFFFCC00),
-              ),
-            ],
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildPill(
+            icon: lightingIcon,
+            label: 'Lighting',
+            value: lightingText,
+            color: lightingColor,
+          ),
+          Container(
+            height: 20,
+            width: 1,
+            color: Colors.white12,
+          ),
+          _buildPill(
+            icon: blinkDetected
+                ? Icons.check_circle_outline
+                : Icons.remove_red_eye_outlined,
+            label: 'Liveness',
+            value: blinkDetected ? 'Verified' : 'Blink Eyes',
+            color: blinkDetected
+                ? const Color(0xFF30D158)
+                : const Color(0xFFFFCC00),
+          ),
+          Container(
+            height: 20,
+            width: 1,
+            color: Colors.white12,
+          ),
+          _buildPill(
+            icon: faceAligned ? Icons.portrait : Icons.face_retouching_natural,
+            label: 'Position',
+            value: faceAligned ? 'Aligned' : 'In Frame',
+            color: faceAligned
+                ? const Color(0xFF30D158)
+                : const Color(0xFFFFCC00),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildFeedbackItem({
+  Widget _buildPill({
     required IconData icon,
     required String label,
     required String value,
     required Color color,
   }) {
-    return Expanded(
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: const TextStyle(color: Colors.white38, fontSize: 9),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: TextStyle(
-              color: color,
-              fontSize: 11,
-              fontWeight: FontWeight.bold,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, color: color, size: 16),
+        const SizedBox(width: 6),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
+            Text(
+              value,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

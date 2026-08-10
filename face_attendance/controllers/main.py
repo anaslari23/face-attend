@@ -155,7 +155,7 @@ class FaceAttendanceController(http.Controller):
             {
                 "device": self._device_payload(device),
                 "model_version": model_version,
-                "threshold": float(self._config("face_attendance.match_threshold", "0.70")),
+                "threshold": float(self._config("face_attendance.match_threshold", "0.60")),
                 "employees": payload,
             }
         )
@@ -247,7 +247,7 @@ class FaceAttendanceController(http.Controller):
         accepted = bool(body.get("accepted"))
         matched_employee_id = body.get("matched_employee_id")
         match_score = float(body.get("match_score") or 0.0)
-        threshold = float(body.get("threshold") or self._config("face_attendance.match_threshold", "0.70"))
+        threshold = float(body.get("threshold") or self._config("face_attendance.match_threshold", "0.60"))
         device_id = body.get("device_id") or device.device_uid
         app_version = body.get("app_version")
         failure_reason = body.get("failure_reason")

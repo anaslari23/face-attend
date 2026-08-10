@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -10,7 +11,9 @@ import 'src/screens/local_log_screen.dart';
 import 'src/screens/login_screen.dart';
 import 'src/screens/settings_screen.dart';
 import 'src/services/database_helper.dart';
+import 'src/services/face_recognition_service.dart';
 import 'src/services/local_log_service.dart';
+import 'src/services/on_device_face_matcher.dart';
 import 'src/services/secure_session_store.dart';
 import 'src/theme/app_theme.dart';
 import 'src/widgets/secret_token_dialog.dart';
@@ -199,6 +202,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   late final OdooFaceAttendanceClient _client;
   late Future<AttendanceStatus> _statusFuture;
   late final AnimationController _bgController;
+  late final OnDeviceFaceMatcher _faceMatcher;
+  Timer? _faceSyncTimer;
 
   @override
   void initState() {
@@ -218,6 +223,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     // Auto-sync offline logs on launch, connectivity changes, and periodic retry.
     LocalLogService.instance.startAutoSync(_client);
 
+    // Background face index delta sync (runs if > 10 minutes since last sync)
+    _faceMatcher = OnDeviceFaceMatcher(
+      client: _client,
+      faceService: FaceRecognitionService(),
+    );
+    _faceMatcher.syncIfStale();
+
+    // 10-minute periodic background face sync
+    _faceSyncTimer = Timer.periodic(const Duration(minutes: 10), (_) {
+      _faceMatcher.syncIfStale();
+    });
+
     if (widget.justLoggedIn) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showSetupSuccessPopup();
@@ -227,6 +244,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   @override
   void dispose() {
+    _faceSyncTimer?.cancel();
     LocalLogService.instance.stopAutoSync();
     _bgController.dispose();
     super.dispose();

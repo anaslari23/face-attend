@@ -19,10 +19,10 @@ class OnDeviceFaceMatcher {
   }) : _client = client,
        _faceService = faceService;
 
-  static const double defaultThreshold = 0.70;
-  static const double reviewThreshold = 0.60;
-  static const double ambiguityMargin = 0.06;
-  static const double adaptiveThreshold = 0.78;
+  static const double defaultThreshold = 0.42;
+  static const double reviewThreshold = 0.35;
+  static const double ambiguityMargin = 0.03;
+  static const double adaptiveThreshold = 0.45;
   static const int maxVariantsPerEmployee = 5;
   static const String modelVersion = 'arcface-w600k-r50-align-v3';
   static const int embeddingDimensions = 512;
@@ -31,9 +31,27 @@ class OnDeviceFaceMatcher {
   final FaceRecognitionService _faceService;
   LocalFaceIndex? _index;
 
+  static DateTime? _lastSyncCompletedAt;
+  static const Duration defaultSyncInterval = Duration(minutes: 10);
+
+  static bool shouldSync([Duration interval = defaultSyncInterval]) {
+    if (_lastSyncCompletedAt == null) return true;
+    return DateTime.now().difference(_lastSyncCompletedAt!) >= interval;
+  }
+
+  Future<FaceIndexSyncResult?> syncIfStale([Duration interval = defaultSyncInterval]) async {
+    if (!shouldSync(interval)) {
+      debugPrint(
+        'FaceAttend: Face index is fresh (synced within last ${interval.inMinutes} mins). Skipping network sync.',
+      );
+      return null;
+    }
+    return sync();
+  }
+
   double get threshold {
     final idx = _index;
-    if (idx != null && idx.threshold > 0) {
+    if (idx != null && idx.threshold > 0 && idx.threshold <= 0.45) {
       return idx.threshold;
     }
     return defaultThreshold;
@@ -144,6 +162,7 @@ class OnDeviceFaceMatcher {
     );
     await LocalFaceIndexStore.write(index);
     _index = index;
+    _lastSyncCompletedAt = DateTime.now();
     debugPrint(
       'FaceAttend sync complete: indexed=${records.length} '
       'failures=${failures.length}',
@@ -161,25 +180,61 @@ class OnDeviceFaceMatcher {
   }
 
   Future<LocalFaceMatchResult> matchImagePath(String imagePath) async {
+    final results = await matchAllFacesImagePath(imagePath);
+    return results.isNotEmpty
+        ? results.first
+        : LocalFaceMatchResult.rejected(
+            confidence: 0,
+            threshold: threshold,
+            reason: 'no_face_detected',
+          );
+  }
+
+  Future<List<LocalFaceMatchResult>> matchAllFacesImagePath(String imagePath) async {
     final index = await readyIndex();
     if (index.records.isEmpty) {
-      return LocalFaceMatchResult.rejected(
-        confidence: 0,
-        threshold: index.threshold,
-        reason: 'no_registered_embeddings',
-      );
+      return [
+        LocalFaceMatchResult.rejected(
+          confidence: 0,
+          threshold: index.threshold,
+          reason: 'no_registered_embeddings',
+        ),
+      ];
     }
 
-    final embeddingResult = await _faceService.embedImagePath(imagePath);
-    if (!embeddingResult.valid || embeddingResult.embedding == null) {
-      return LocalFaceMatchResult.rejected(
-        confidence: 0,
-        threshold: index.threshold,
-        reason: _reasonForFaceError(embeddingResult.error),
-      );
+    final embeddingResults = await _faceService.embedAllFacesFromImagePath(imagePath);
+    if (embeddingResults.isEmpty) {
+      return [
+        LocalFaceMatchResult.rejected(
+          confidence: 0,
+          threshold: index.threshold,
+          reason: 'no_face_detected',
+        ),
+      ];
     }
 
-    final query = embeddingResult.embedding!;
+    final results = <LocalFaceMatchResult>[];
+    for (final emb in embeddingResults) {
+      if (!emb.valid || emb.embedding == null) {
+        results.add(
+          LocalFaceMatchResult.rejected(
+            confidence: 0,
+            threshold: index.threshold,
+            reason: _reasonForFaceError(emb.error),
+          ),
+        );
+        continue;
+      }
+      results.add(await _matchQueryEmbedding(emb.embedding!, index, emb.qualityScore));
+    }
+    return results;
+  }
+
+  Future<LocalFaceMatchResult> _matchQueryEmbedding(
+    Float32List query,
+    LocalFaceIndex index,
+    double qualityScore,
+  ) async {
     final candidates = <_Candidate>[];
     for (final record in index.records) {
       candidates.add(
@@ -211,7 +266,9 @@ class OnDeviceFaceMatcher {
         .cast<_Candidate?>()
         .firstWhere((candidate) => candidate != null, orElse: () => null);
     final secondScore = secondBestDifferent?.score;
-    final threshold = index.threshold > 0 ? index.threshold : defaultThreshold;
+    final threshold = (index.threshold > 0 && index.threshold <= 0.45)
+        ? index.threshold
+        : defaultThreshold;
     debugPrint(
       'FaceAttend match: best=${best.record.employeeId} '
       '${best.record.employeeName} score=${best.score.toStringAsFixed(4)} '
@@ -219,7 +276,10 @@ class OnDeviceFaceMatcher {
       'threshold=$threshold source=${best.source}',
     );
 
-    if (secondScore != null && best.score - secondScore < ambiguityMargin) {
+    // Only flag ambiguity if the second best person is ALSO a high-confidence match above threshold
+    if (secondScore != null &&
+        secondScore >= threshold &&
+        (best.score - secondScore) < ambiguityMargin) {
       return LocalFaceMatchResult.rejected(
         confidence: best.score,
         threshold: threshold,
@@ -228,7 +288,7 @@ class OnDeviceFaceMatcher {
         reason: 'ambiguous_match',
         secondBestConfidence: secondScore,
         embeddingSource: best.source,
-        needsReview: best.score >= reviewThreshold,
+        needsReview: false,
       );
     }
 
@@ -238,12 +298,10 @@ class OnDeviceFaceMatcher {
         threshold: threshold,
         employeeId: best.record.employeeId,
         employeeName: best.record.employeeName,
-        reason: best.score >= reviewThreshold
-            ? 'needs_review'
-            : 'below_threshold',
+        reason: 'below_threshold',
         secondBestConfidence: secondScore,
         embeddingSource: best.source,
-        needsReview: best.score >= reviewThreshold,
+        needsReview: false,
       );
     }
 
@@ -258,7 +316,7 @@ class OnDeviceFaceMatcher {
       threshold: threshold,
       secondBestConfidence: secondScore,
       embeddingSource: best.source,
-      livenessScore: embeddingResult.qualityScore,
+      livenessScore: qualityScore,
     );
   }
 

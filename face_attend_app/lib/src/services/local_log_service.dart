@@ -131,14 +131,16 @@ class LocalLogService {
       _cache = dbLogs.map((item) => LocalPunchLog.fromJson(item)).toList();
       _cache!.sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
-      // Prune logs older than our cutoff
+      // Prune logs older than our cutoff and strip any legacy cooldown/system error logs
       final cutoff = _getCutoffDate(DateTime.now());
       final originalLength = _cache!.length;
       _cache = _cache!
           .where(
             (log) =>
-                log.timestamp.isAfter(cutoff) ||
-                log.timestamp.isAtSameMomentAs(cutoff),
+                (log.timestamp.isAfter(cutoff) ||
+                    log.timestamp.isAtSameMomentAs(cutoff)) &&
+                log.payload['failure_reason'] != 'cooldown' &&
+                log.employeeName != 'System Error',
           )
           .toList();
 
@@ -449,6 +451,45 @@ class LocalLogService {
       }
     } catch (e) {
       debugPrint('Error deleting local logs: $e');
+    }
+  }
+
+  /// Checks if an employee has already punched within the given cooldown window.
+  /// Queries SQLite punch_logs to guarantee persistence across app restarts and screen transitions.
+  Future<bool> isEmployeeInCooldown(
+    int employeeId, {
+    Duration cooldown = const Duration(minutes: 5),
+  }) async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final cutoff = DateTime.now().subtract(cooldown).toIso8601String();
+      final results = await db.rawQuery(
+        '''
+        SELECT timestamp FROM punch_logs
+        WHERE json_extract(payload_json, '\$.matched_employee_id') = ?
+          AND json_extract(payload_json, '\$.accepted') = 1
+          AND timestamp >= ?
+        ORDER BY timestamp DESC
+        LIMIT 1
+        ''',
+        [employeeId, cutoff],
+      );
+      return results.isNotEmpty;
+    } catch (e) {
+      debugPrint('Error checking employee cooldown in SQLite: $e');
+      return false;
+    }
+  }
+
+  Future<void> pruneCooldownLogs() async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      await db.delete(
+        'punch_logs',
+        where: "json_extract(payload_json, '\$.failure_reason') = 'cooldown' OR employee_name = 'System Error'",
+      );
+    } catch (e) {
+      debugPrint('Error pruning invalid logs from SQLite: $e');
     }
   }
 

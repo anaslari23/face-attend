@@ -10,6 +10,7 @@ import 'src/screens/local_log_screen.dart';
 import 'src/screens/login_screen.dart';
 import 'src/screens/settings_screen.dart';
 import 'src/services/database_helper.dart';
+import 'src/services/device_service.dart';
 import 'src/services/local_log_service.dart';
 import 'src/services/secure_session_store.dart';
 import 'src/theme/app_theme.dart';
@@ -217,11 +218,26 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     // Auto-sync offline logs on launch, connectivity changes, and periodic retry.
     LocalLogService.instance.startAutoSync(_client);
+    _logDeviceInfo();
 
     if (widget.justLoggedIn) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showSetupSuccessPopup();
       });
+    }
+  }
+
+  Future<void> _logDeviceInfo() async {
+    try {
+      final device = await DeviceService().identity();
+      debugPrint('\n=========================================');
+      debugPrint('MOBILE DEVICE ID          : ${device.id}');
+      debugPrint('MOBILE DEVICE NAME        : ${device.name}');
+      debugPrint('SCANNER DEVICE ID (ODOO)  : ${widget.session.deviceId}');
+      debugPrint('GENERATED DEVICE ID       : ${widget.session.generatedDeviceId ?? "None"}');
+      debugPrint('=========================================\n');
+    } catch (e) {
+      debugPrint('Failed to log device info: $e');
     }
   }
 

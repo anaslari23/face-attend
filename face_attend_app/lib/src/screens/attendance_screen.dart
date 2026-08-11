@@ -85,9 +85,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   Future<void> _init() async {
     try {
       final device = await _deviceService.identity();
-      final deviceId = widget.session.deviceId.isNotEmpty
-          ? widget.session.deviceId
-          : device.id;
+      final deviceId = device.id.isNotEmpty
+          ? device.id
+          : widget.session.deviceId;
       debugPrint('\n=========================================');
       debugPrint('DEVICE_UID: $deviceId');
       debugPrint('=========================================\n');
@@ -348,9 +348,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       });
       final device = await _deviceService.identity();
       final appVersion = await _deviceService.appVersion();
-      final deviceId = widget.session.deviceId.isNotEmpty
-          ? widget.session.deviceId
-          : device.id;
+      final deviceId = device.id.isNotEmpty
+          ? device.id
+          : widget.session.deviceId;
       final liveAccepted = match.livenessPassed;
       final accepted =
           match.matched && match.employeeId != null && liveAccepted;
@@ -511,9 +511,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   Future<void> _logRejectedScan(String error) async {
     final device = await _deviceService.identity();
     final appVersion = await _deviceService.appVersion();
-    final deviceId = widget.session.deviceId.isNotEmpty
-        ? widget.session.deviceId
-        : device.id;
+    final deviceId = device.id.isNotEmpty
+        ? device.id
+        : widget.session.deviceId;
 
     final Map<String, dynamic> payload = {
       'accepted': false,

@@ -119,11 +119,15 @@ class _LocalLogScreenState extends State<LocalLogScreen> {
   void initState() {
     super.initState();
     _calendarScrollController.addListener(_onCalendarScroll);
+    final clientDeviceId = (widget.session.generatedDeviceId != null &&
+            widget.session.generatedDeviceId!.isNotEmpty)
+        ? widget.session.generatedDeviceId!
+        : widget.session.deviceId;
     _client = OdooFaceAttendanceClient(
       baseUrl: widget.session.baseUrl,
       db: widget.session.db,
       token: widget.session.token,
-      deviceId: widget.session.deviceId,
+      deviceId: clientDeviceId,
     );
     _loadLogs();
     WidgetsBinding.instance.addPostFrameCallback((_) {

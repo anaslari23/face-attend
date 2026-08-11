@@ -119,6 +119,14 @@ class _LoginScreenState extends State<LoginScreen>
         setupCode: _setupCode.text.trim(),
         deviceId: deviceIdentity.id,
       );
+
+      debugPrint('\n=========================================');
+      debugPrint('LOGGED IN MOBILE DEVICE ID : ${deviceIdentity.id}');
+      debugPrint('LOGGED IN DEVICE NAME      : ${deviceIdentity.name}');
+      debugPrint('SCANNER DEVICE ID (ODOO)   : ${session.deviceId}');
+      debugPrint('GENERATED DEVICE ID        : ${session.generatedDeviceId}');
+      debugPrint('=========================================\n');
+
       await OdooFaceAttendanceClient(
         baseUrl: session.baseUrl,
         db: session.db,

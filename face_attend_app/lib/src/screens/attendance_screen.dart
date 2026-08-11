@@ -73,11 +73,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   void initState() {
     super.initState();
+    final clientDeviceId = (widget.session.generatedDeviceId != null &&
+            widget.session.generatedDeviceId!.isNotEmpty)
+        ? widget.session.generatedDeviceId!
+        : widget.session.deviceId;
     _client = OdooFaceAttendanceClient(
       baseUrl: widget.session.baseUrl,
       db: widget.session.db,
       token: widget.session.token,
-      deviceId: widget.session.deviceId,
+      deviceId: clientDeviceId,
     );
     _matcher = OnDeviceFaceMatcher(client: _client, faceService: _faceService);
     _init();
@@ -86,9 +90,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   Future<void> _init() async {
     try {
       final device = await _deviceService.identity();
-      final deviceId = widget.session.deviceId.isNotEmpty
-          ? widget.session.deviceId
-          : device.id;
+      final genDeviceId = widget.session.generatedDeviceId;
+      final deviceId = (genDeviceId != null && genDeviceId.isNotEmpty)
+          ? genDeviceId
+          : (device.id.isNotEmpty ? device.id : widget.session.deviceId);
       debugPrint('\n=========================================');
       debugPrint('DEVICE_UID: $deviceId');
       debugPrint('=========================================\n');
@@ -323,9 +328,42 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
       final device = await _deviceService.identity();
       final appVersion = await _deviceService.appVersion();
+<<<<<<< HEAD
       final deviceId = widget.session.deviceId.isNotEmpty
           ? widget.session.deviceId
           : device.id;
+=======
+      final genDeviceId = widget.session.generatedDeviceId;
+      final deviceId = (genDeviceId != null && genDeviceId.isNotEmpty)
+          ? genDeviceId
+          : (device.id.isNotEmpty ? device.id : widget.session.deviceId);
+      final liveAccepted = match.livenessPassed;
+      final accepted =
+          match.matched && match.employeeId != null && liveAccepted;
+      final inCooldown = accepted && _isEmployeeInCooldown(match.employeeId!);
+
+      final Map<String, dynamic> payload = {
+        'accepted': accepted && !inCooldown,
+        'matched_employee_id': match.employeeId,
+        'match_score': match.confidence,
+        'threshold': match.threshold,
+        'device_id': deviceId,
+        'app_version': appVersion,
+        'failure_reason': accepted
+            ? inCooldown
+                  ? 'cooldown'
+                  : null
+            : liveAccepted
+            ? match.reason ?? 'below_threshold'
+            : 'liveness_failed',
+        'second_best_confidence': match.secondBestConfidence,
+        'embedding_source': match.embeddingSource,
+        'needs_review': match.needsReview,
+        'liveness_passed': match.livenessPassed,
+        'liveness_score': match.livenessScore,
+        'spoof_score': match.livenessPassed ? 0.0 : 1.0,
+      };
+>>>>>>> main
 
       final now = DateTime.now();
       final List<String> checkedInNames = [];
@@ -448,12 +486,56 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
+<<<<<<< HEAD
   Future<void> _syncPunchInBackground({
     required Map<String, dynamic> payload,
     required String backendTimestamp,
     required Map<String, dynamic> fullLogData,
     required String logId,
   }) async {
+=======
+  Future<void> _logRejectedScan(String error) async {
+    final device = await _deviceService.identity();
+    final appVersion = await _deviceService.appVersion();
+    final genDeviceId = widget.session.generatedDeviceId;
+    final deviceId = (genDeviceId != null && genDeviceId.isNotEmpty)
+        ? genDeviceId
+        : (device.id.isNotEmpty ? device.id : widget.session.deviceId);
+
+    final Map<String, dynamic> payload = {
+      'accepted': false,
+      'matched_employee_id': null,
+      'match_score': 0.0,
+      'threshold': 0.70,
+      'device_id': deviceId,
+      'app_version': appVersion,
+      'failure_reason': error,
+      'liveness_passed': false,
+      'spoof_score': 1.0,
+    };
+
+    final now = DateTime.now();
+    final logId = 'log_${now.millisecondsSinceEpoch}_err';
+    final backendTimestamp = LocalLogService.instance.formatBackendTimestamp(now);
+    final fullLogData = {
+      'local_log_id': logId,
+      'local_timestamp': now.toIso8601String(),
+      'backend_timestamp': backendTimestamp,
+      'employee_name': 'System Error',
+      'is_synced': false,
+      'sync_error': null,
+      'payload': payload,
+    };
+
+    await LocalLogService.instance.addLog(
+      id: logId,
+      timestamp: now,
+      payload: payload,
+      employeeName: 'System Error',
+      isSynced: false,
+    );
+
+>>>>>>> main
     try {
       await _client.punch(
         accepted: payload['accepted'] as bool,

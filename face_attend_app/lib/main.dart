@@ -11,7 +11,11 @@ import 'src/screens/local_log_screen.dart';
 import 'src/screens/login_screen.dart';
 import 'src/screens/settings_screen.dart';
 import 'src/services/database_helper.dart';
+<<<<<<< HEAD
 import 'src/services/face_recognition_service.dart';
+=======
+import 'src/services/device_service.dart';
+>>>>>>> main
 import 'src/services/local_log_service.dart';
 import 'src/services/on_device_face_matcher.dart';
 import 'src/services/secure_session_store.dart';
@@ -208,11 +212,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    final clientDeviceId = (widget.session.generatedDeviceId != null &&
+            widget.session.generatedDeviceId!.isNotEmpty)
+        ? widget.session.generatedDeviceId!
+        : widget.session.deviceId;
     _client = OdooFaceAttendanceClient(
       baseUrl: widget.session.baseUrl,
       db: widget.session.db,
       token: widget.session.token,
-      deviceId: widget.session.deviceId,
+      deviceId: clientDeviceId,
     );
     _statusFuture = _client.status();
     _bgController = AnimationController(
@@ -222,6 +230,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
     // Auto-sync offline logs on launch, connectivity changes, and periodic retry.
     LocalLogService.instance.startAutoSync(_client);
+    _logDeviceInfo();
 
     // Background face index delta sync (runs if > 10 minutes since last sync)
     _faceMatcher = OnDeviceFaceMatcher(
@@ -239,6 +248,20 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showSetupSuccessPopup();
       });
+    }
+  }
+
+  Future<void> _logDeviceInfo() async {
+    try {
+      final device = await DeviceService().identity();
+      debugPrint('\n=========================================');
+      debugPrint('MOBILE DEVICE ID          : ${device.id}');
+      debugPrint('MOBILE DEVICE NAME        : ${device.name}');
+      debugPrint('SCANNER DEVICE ID (ODOO)  : ${widget.session.deviceId}');
+      debugPrint('GENERATED DEVICE ID       : ${widget.session.generatedDeviceId ?? "None"}');
+      debugPrint('=========================================\n');
+    } catch (e) {
+      debugPrint('Failed to log device info: $e');
     }
   }
 

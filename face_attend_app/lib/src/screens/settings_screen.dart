@@ -2,9 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:face_attend_app/main.dart';
 
 import '../models/session.dart';
+import '../services/device_service.dart';
 import '../theme/app_theme.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({
     required this.session,
     required this.onLogout,
@@ -13,6 +14,42 @@ class SettingsScreen extends StatelessWidget {
 
   final MobileSession session;
   final VoidCallback onLogout;
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  String? _mobileDeviceId;
+  bool _showFullMobileDeviceId = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMobileDeviceId();
+  }
+
+  Future<void> _loadMobileDeviceId() async {
+    try {
+      final identity = await DeviceService().identity();
+      if (mounted) {
+        setState(() {
+          _mobileDeviceId = identity.id;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to fetch mobile device ID for settings: $e');
+    }
+  }
+
+  String _formatMaskedDeviceId(String? id) {
+    if (id == null || id.isEmpty) return 'Loading...';
+    if (_showFullMobileDeviceId) return id;
+    if (id.length <= 4) return '*' * id.length;
+    final visiblePart = id.substring(id.length - 4);
+    final maskedPart = '*' * (id.length - 4);
+    return '$maskedPart$visiblePart';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,9 +77,37 @@ class SettingsScreen extends StatelessWidget {
                   _SettingsPanel(
                     children: [
                       _SettingsTile(
+                        icon: Icons.smartphone,
+                        label: 'Mobile Device ID',
+                        value: _formatMaskedDeviceId(_mobileDeviceId),
+                        trailing: _mobileDeviceId != null && _mobileDeviceId!.isNotEmpty
+                            ? IconButton(
+                                icon: Icon(
+                                  _showFullMobileDeviceId
+                                      ? Icons.visibility_off
+                                      : Icons.visibility,
+                                  size: 20,
+                                  color: FaceAttendColors.muted,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _showFullMobileDeviceId =
+                                        !_showFullMobileDeviceId;
+                                  });
+                                },
+                              )
+                            : null,
+                      ),
+                      const Divider(
+                        height: 1,
+                        thickness: 0.8,
+                        indent: 56,
+                        color: FaceAttendColors.border,
+                      ),
+                      _SettingsTile(
                         icon: Icons.qr_code_scanner,
                         label: 'Scanner Name',
-                        value: session.deviceName,
+                        value: widget.session.deviceName,
                       ),
                       const Divider(
                         height: 1,
@@ -53,7 +118,7 @@ class SettingsScreen extends StatelessWidget {
                       _SettingsTile(
                         icon: Icons.devices,
                         label: 'Scanner Device ID',
-                        value: session.deviceId,
+                        value: widget.session.deviceId,
                       ),
                       const Divider(
                         height: 1,
@@ -63,8 +128,8 @@ class SettingsScreen extends StatelessWidget {
                       ),
                       _SettingsTile(
                         icon: Icons.fingerprint,
-                        label: 'Device ID',
-                        value: session.generatedDeviceId ?? 'Not Generated',
+                        label: 'Generated Device ID',
+                        value: widget.session.generatedDeviceId ?? 'Not Generated',
                       ),
                       const Divider(
                         height: 1,
@@ -75,7 +140,7 @@ class SettingsScreen extends StatelessWidget {
                       _SettingsTile(
                         icon: Icons.vpn_key,
                         label: 'Scanner Token',
-                        value: session.token.isEmpty
+                        value: widget.session.token.isEmpty
                             ? 'Not configured'
                             : 'Configured',
                       ),
@@ -105,7 +170,7 @@ class SettingsScreen extends StatelessWidget {
                       _SettingsTile(
                         icon: Icons.cloud,
                         label: 'Odoo URL',
-                        value: session.baseUrl,
+                        value: widget.session.baseUrl,
                       ),
                       const Divider(
                         height: 1,
@@ -116,7 +181,7 @@ class SettingsScreen extends StatelessWidget {
                       _SettingsTile(
                         icon: Icons.storage,
                         label: 'Database',
-                        value: session.db,
+                        value: widget.session.db,
                       ),
                       const Divider(
                         height: 1,
@@ -139,7 +204,7 @@ class SettingsScreen extends StatelessWidget {
               delay: const Duration(milliseconds: 250),
               child: ScaleOnPress(
                 onTap: () {
-                  onLogout();
+                  widget.onLogout();
                   Navigator.of(context).popUntil((route) => route.isFirst);
                 },
                 child: Container(
@@ -203,11 +268,13 @@ class _SettingsTile extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.value,
+    this.trailing,
   });
 
   final IconData icon;
   final String label;
   final String value;
+  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -228,10 +295,11 @@ class _SettingsTile extends StatelessWidget {
           color: FaceAttendColors.ink,
         ),
       ),
-      subtitle: Text(
+      subtitle: SelectableText(
         value,
         style: const TextStyle(fontSize: 13, color: FaceAttendColors.muted),
       ),
+      trailing: trailing,
     );
   }
 }

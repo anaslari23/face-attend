@@ -72,11 +72,15 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   @override
   void initState() {
     super.initState();
+    final clientDeviceId = (widget.session.generatedDeviceId != null &&
+            widget.session.generatedDeviceId!.isNotEmpty)
+        ? widget.session.generatedDeviceId!
+        : widget.session.deviceId;
     _client = OdooFaceAttendanceClient(
       baseUrl: widget.session.baseUrl,
       db: widget.session.db,
       token: widget.session.token,
-      deviceId: widget.session.deviceId,
+      deviceId: clientDeviceId,
     );
     _matcher = OnDeviceFaceMatcher(client: _client, faceService: _faceService);
     _init();
@@ -85,9 +89,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   Future<void> _init() async {
     try {
       final device = await _deviceService.identity();
-      final deviceId = device.id.isNotEmpty
-          ? device.id
-          : widget.session.deviceId;
+      final genDeviceId = widget.session.generatedDeviceId;
+      final deviceId = (genDeviceId != null && genDeviceId.isNotEmpty)
+          ? genDeviceId
+          : (device.id.isNotEmpty ? device.id : widget.session.deviceId);
       debugPrint('\n=========================================');
       debugPrint('DEVICE_UID: $deviceId');
       debugPrint('=========================================\n');
@@ -348,9 +353,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       });
       final device = await _deviceService.identity();
       final appVersion = await _deviceService.appVersion();
-      final deviceId = device.id.isNotEmpty
-          ? device.id
-          : widget.session.deviceId;
+      final genDeviceId = widget.session.generatedDeviceId;
+      final deviceId = (genDeviceId != null && genDeviceId.isNotEmpty)
+          ? genDeviceId
+          : (device.id.isNotEmpty ? device.id : widget.session.deviceId);
       final liveAccepted = match.livenessPassed;
       final accepted =
           match.matched && match.employeeId != null && liveAccepted;
@@ -511,9 +517,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   Future<void> _logRejectedScan(String error) async {
     final device = await _deviceService.identity();
     final appVersion = await _deviceService.appVersion();
-    final deviceId = device.id.isNotEmpty
-        ? device.id
-        : widget.session.deviceId;
+    final genDeviceId = widget.session.generatedDeviceId;
+    final deviceId = (genDeviceId != null && genDeviceId.isNotEmpty)
+        ? genDeviceId
+        : (device.id.isNotEmpty ? device.id : widget.session.deviceId);
 
     final Map<String, dynamic> payload = {
       'accepted': false,

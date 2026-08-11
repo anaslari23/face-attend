@@ -204,11 +204,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    final clientDeviceId = (widget.session.generatedDeviceId != null &&
+            widget.session.generatedDeviceId!.isNotEmpty)
+        ? widget.session.generatedDeviceId!
+        : widget.session.deviceId;
     _client = OdooFaceAttendanceClient(
       baseUrl: widget.session.baseUrl,
       db: widget.session.db,
       token: widget.session.token,
-      deviceId: widget.session.deviceId,
+      deviceId: clientDeviceId,
     );
     _statusFuture = _client.status();
     _bgController = AnimationController(

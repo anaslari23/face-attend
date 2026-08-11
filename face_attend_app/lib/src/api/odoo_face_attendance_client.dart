@@ -116,14 +116,14 @@ class OdooFaceAttendanceClient {
     final generatedDeviceId = payload['generated_device_id'] as String?;
     print("generatedDeviceId : $generatedDeviceId");
     print("token : ${payload['token'] as String}");
-    print("deviceId : ${device['device_uid'] as String? ?? generatedDeviceId}");
+    print("deviceId : ${generatedDeviceId ?? device['device_uid'] as String? ?? 'unknown_device'}");
     print("deviceName : ${device['name'] as String? ?? 'Shared Scanner'}");
     
     return MobileSession(
       baseUrl: baseUrl,
       db: db,
       token: payload['token'] as String,
-      deviceId: device['device_uid'] as String? ?? generatedDeviceId ?? 'unknown_device',
+      deviceId: generatedDeviceId ?? device['device_uid'] as String? ?? 'unknown_device',
       deviceName: device['name'] as String? ?? 'Shared Scanner',
       generatedDeviceId: generatedDeviceId,
     );

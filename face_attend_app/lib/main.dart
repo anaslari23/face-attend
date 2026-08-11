@@ -70,11 +70,11 @@ Future<void> main() async {
     if (session == null) {
       debugPrint("No session found.");
     } else {
-      debugPrint("Base URL           : ${session.baseUrl}");
-      debugPrint("Database           : ${session.db}");
-      debugPrint("Token              : ${session.token}");
-      debugPrint("Device ID          : ${session.deviceId}");
-      debugPrint("Device Name        : ${session.deviceName}");
+      debugPrint("Base URL: ${session.baseUrl}");
+      debugPrint("Database: ${session.db}");
+      debugPrint("Token: ${session.token}");
+      debugPrint("Device ID: ${session.deviceId}");
+      debugPrint("Device Name: ${session.deviceName}");
       debugPrint("Generated Device ID: ${session.generatedDeviceId}");
     }
 

@@ -350,6 +350,7 @@ class LocalLogService {
           'match_score': (p['match_score'] as num? ?? 0.0).toDouble(),
           'threshold': (p['threshold'] as num? ?? 0.70).toDouble(),
           'device_id': p['device_id'] as String? ?? '',
+          'generated_device_id': p['generated_device_id'] as String?,
           'app_version': p['app_version'] as String? ?? '1.0.0',
           'failure_reason': p['failure_reason'] as String?,
           'second_best_confidence': p['second_best_confidence'] != null
@@ -380,6 +381,7 @@ class LocalLogService {
           matchScore: requestBody['match_score'] as double,
           threshold: requestBody['threshold'] as double,
           deviceId: requestBody['device_id'] as String,
+          generatedDeviceId: requestBody['generated_device_id'] as String?,
           appVersion: requestBody['app_version'] as String,
           failureReason: requestBody['failure_reason'] as String?,
           secondBestConfidence: requestBody['second_best_confidence'] as double?,

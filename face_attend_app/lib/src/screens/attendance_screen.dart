@@ -350,6 +350,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           'match_score': match.confidence,
           'threshold': match.threshold,
           'device_id': deviceId,
+          'generated_device_id': widget.session.generatedDeviceId,
           'app_version': appVersion,
           'failure_reason': accepted
               ? null
@@ -460,6 +461,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         matchScore: (payload['match_score'] as num).toDouble(),
         threshold: (payload['threshold'] as num).toDouble(),
         deviceId: payload['device_id'] as String,
+        generatedDeviceId: payload['generated_device_id'] as String?,
         appVersion: payload['app_version'] as String,
         failureReason: payload['failure_reason'] as String?,
         secondBestConfidence: payload['second_best_confidence'] != null

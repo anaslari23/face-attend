@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 
 import 'package:http/http.dart' as http;
 
@@ -113,11 +114,16 @@ class OdooFaceAttendanceClient {
 
     final device = payload['device'] as Map<String, dynamic>;
     final generatedDeviceId = payload['generated_device_id'] as String?;
+    print("generatedDeviceId : $generatedDeviceId");
+    print("token : ${payload['token'] as String}");
+    print("deviceId : ${device['device_uid'] as String? ?? generatedDeviceId}");
+    print("deviceName : ${device['name'] as String? ?? 'Shared Scanner'}");
+    
     return MobileSession(
       baseUrl: baseUrl,
       db: db,
       token: payload['token'] as String,
-      deviceId: device['device_uid'] as String? ?? deviceId,
+      deviceId: device['device_uid'] as String? ?? generatedDeviceId ?? 'unknown_device',
       deviceName: device['name'] as String? ?? 'Shared Scanner',
       generatedDeviceId: generatedDeviceId,
     );
@@ -155,6 +161,7 @@ class OdooFaceAttendanceClient {
     required double matchScore,
     required double threshold,
     required String deviceId,
+    String? generatedDeviceId,
     required String appVersion,
     String? failureReason,
     double? secondBestConfidence,
@@ -168,12 +175,14 @@ class OdooFaceAttendanceClient {
     String? punchTime,
     Map<String, dynamic>? fullLogData,
   }) async {
+    debugPrint('punch: deviceId=$deviceId, generatedDeviceId=$generatedDeviceId');
     final body = <String, dynamic>{
       'accepted': accepted,
       'matched_employee_id': matchedEmployeeId,
       'match_score': matchScore,
       'threshold': threshold,
       'device_id': deviceId,
+      if (generatedDeviceId != null) 'generated_device_id': generatedDeviceId,
       'app_version': appVersion,
       'failure_reason': failureReason,
       'second_best_confidence': secondBestConfidence,

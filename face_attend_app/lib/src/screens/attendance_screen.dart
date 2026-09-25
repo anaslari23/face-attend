@@ -25,7 +25,7 @@ class AttendanceScreen extends StatefulWidget {
 class _AttendanceScreenState extends State<AttendanceScreen> {
   static const _analysisInterval = Duration(milliseconds: 250);
   static const _detectionWatchdogTimeout = Duration(seconds: 2);
-  static const _stableFrameTarget = 5;
+  static const _stableFrameTarget = 4;
   static const _employeePunchCooldown = Duration(minutes: 2);
 
   final _faceService = FaceRecognitionService();
@@ -192,7 +192,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         return;
       }
 
-      final singleFace = result.faces.length == 1;
+      final singleFace = result.isFaceFullyDirected && result.faces.length == 1;
       final nextStableFrames = singleFace ? _stableFrames + 1 : 0;
       final ready = nextStableFrames >= _stableFrameTarget;
 
@@ -218,6 +218,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         }
       }
 
+      final activeFaceBounds = singleFace
+          ? result.faces.first.boundingBox
+          : result.rawFaceBoundingBox;
+
       setState(() {
         _currentBrightness = brightness;
         _blinkDetected = blinkDetected;
@@ -225,12 +229,12 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         _lastFaceSeenTime = lastFaceSeenTime;
 
         _stableFrames = nextStableFrames;
-        _faceBounds = singleFace ? result.faces.first.boundingBox : null;
+        _faceBounds = activeFaceBounds;
         _faceImageSize = result.imageSize;
-        _faceOverlays = singleFace
+        _faceOverlays = activeFaceBounds != null
             ? [
                 FaceOverlay(
-                  bounds: result.faces.first.boundingBox,
+                  bounds: activeFaceBounds,
                   ready: ready,
                   label: ready ? 'Scanning' : null,
                 ),
@@ -261,10 +265,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     MultiFaceValidationResult result,
     bool ready,
   ) {
-    if (result.faces.length > 1) return 'One person at a time';
+    if (!result.isFaceFullyDirected) {
+      return result.message;
+    }
     if (ready) return 'Scanning';
-    if (result.faces.length == 1) return 'Hold still';
-    return result.message;
+    return 'Hold still';
   }
 
   Future<void> _scan() => _captureAndSubmit();

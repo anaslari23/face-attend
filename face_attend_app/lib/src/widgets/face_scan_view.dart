@@ -289,12 +289,10 @@ class _FaceGuidePainter extends CustomPainter {
     final String labelText;
     if (matchingName != null && matchingPercent != null) {
       labelText = "${matchingName!.toUpperCase()} (${matchingPercent!.toStringAsFixed(1)}%)";
+    } else if (ready) {
+      labelText = "SCANNING...";
     } else {
-      labelText = ready
-          ? "MATCHED"
-          : (isFaceDetected || faceOverlays.isNotEmpty
-                ? "SCANNING..."
-                : "ALIGN FACE");
+      labelText = "ALIGN FACE";
     }
     _drawLabel(canvas, center, radius, labelText, color);
   }

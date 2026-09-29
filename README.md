@@ -67,7 +67,7 @@ Open **Face Attendance > Configuration** and create or edit the active configura
 
 Recommended starting values:
 
-- Confidence threshold: `0.70`
+- Confidence threshold: `0.60`
 - Liveness required: enabled
 - Anti-spoofing required: enabled
 - Active: enabled

@@ -25,7 +25,7 @@ void main() {
         payload: {
           'accepted': true,
           'match_score': 0.85,
-          'threshold': 0.70,
+          'threshold': 0.60,
           'liveness_passed': true,
           'liveness_score': 0.90,
           'device_id': 'device_abc',
@@ -39,7 +39,7 @@ void main() {
         payload: {
           'accepted': true,
           'match_score': 0.88,
-          'threshold': 0.70,
+          'threshold': 0.60,
           'liveness_passed': true,
           'liveness_score': 0.95,
           'device_id': 'device_abc',

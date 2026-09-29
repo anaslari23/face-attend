@@ -44,7 +44,7 @@ class FaceAttendanceConfig(models.Model):
     _rec_name = "name"
 
     name = fields.Char(required=True, default="Default Face Attendance")
-    confidence_threshold = fields.Float(default=0.70)
+    confidence_threshold = fields.Float(default=0.60)
     liveness_required = fields.Boolean(default=True)
     anti_spoofing_required = fields.Boolean(default=True)
     active = fields.Boolean(default=True)

@@ -59,12 +59,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       _scannerState == _ScannerState.capturing ||
       _scannerState == _ScannerState.submitting;
 
-  bool get _canScan =>
-      _camera != null &&
-      _camera!.value.isInitialized &&
-      _scannerState != _ScannerState.loading &&
-      _scannerState != _ScannerState.capturing &&
-      _scannerState != _ScannerState.submitting;
 
   bool get _autoDetectionEnabled =>
       _scannerState == _ScannerState.detecting ||
@@ -259,6 +253,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         _message = error.toString().replaceAll('uri=', 'url=');
         _scannerState = _ScannerState.failed;
       });
+      Timer(const Duration(milliseconds: 1800), () {
+        if (mounted && _scannerState == _ScannerState.failed) {
+          _resetDetectionState();
+        }
+      });
     } finally {
       _processingFrame = false;
       _clearStaleDetectionIfNeeded();
@@ -300,7 +299,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
-  Future<void> _scan() => _captureAndSubmit();
 
   Future<void> _captureAndSubmit() async {
     final camera = _camera;
@@ -554,8 +552,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                   ),
             time: DateTime.now(),
             confidence: match.confidence,
-            primaryLabel: 'Scan Again',
-            primaryIcon: Icons.refresh,
+            showPrimary: false,
             popToFirst: false,
             showRetry: false,
           ),
@@ -590,7 +587,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       'accepted': false,
       'matched_employee_id': null,
       'match_score': 0.0,
-      'threshold': 0.70,
+      'threshold': _matcher.threshold,
       'device_id': deviceId,
       'app_version': appVersion,
       'failure_reason': error,
@@ -623,7 +620,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       await _client.punch(
         accepted: false,
         matchScore: 0,
-        threshold: 0.70,
+        threshold: _matcher.threshold,
         deviceId: deviceId,
         appVersion: appVersion,
         failureReason: error,
@@ -646,6 +643,11 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       _message = message;
       _scannerState = _ScannerState.paused;
       _clearFaceState();
+    });
+    Timer(const Duration(milliseconds: 1800), () {
+      if (mounted && _scannerState == _ScannerState.paused) {
+        _resetDetectionState();
+      }
     });
   }
 
@@ -821,7 +823,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: const BorderRadius.vertical(
@@ -835,85 +837,40 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
                 ),
               ],
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
-                  _message,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey.shade700,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Container(
-                  height: 52,
-                  decoration: BoxDecoration(
-                    gradient: _busy
-                        ? null
-                        : const LinearGradient(
-                            colors: [Color(0xFFEDA672), Color(0xFFE57C38)],
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                          ),
-                    color: _busy ? Colors.grey.shade300 : null,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: _busy
-                        ? null
-                        : [
-                            BoxShadow(
-                              color: const Color(
-                                0xFFEDA672,
-                              ).withValues(alpha: 0.25),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                  ),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
+                if (_busy) ...[
+                  const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: Color(0xFFEDA672),
                     ),
-                    onPressed: _canScan
-                        ? _scannerState == _ScannerState.paused ||
-                                  _scannerState == _ScannerState.failed
-                              ? () => _resetDetectionState()
-                              : _scan
-                        : null,
-                    child: _busy
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Color(0xFFEDA672),
-                            ),
-                          )
-                        : Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.face, color: Colors.white),
-                              SizedBox(width: 8),
-                              Text(
-                                _scannerState == _ScannerState.paused ||
-                                        _scannerState == _ScannerState.failed
-                                    ? 'Scan Again'
-                                    : 'Scan Now',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ],
-                          ),
+                  ),
+                  const SizedBox(width: 12),
+                ] else ...[
+                  Icon(
+                    _scannerState == _ScannerState.ready
+                        ? Icons.check_circle_outline
+                        : Icons.face,
+                    size: 22,
+                    color: _scannerState == _ScannerState.ready
+                        ? const Color(0xFF10B981)
+                        : const Color(0xFFEDA672),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+                Flexible(
+                  child: Text(
+                    _message,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey.shade800,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ],

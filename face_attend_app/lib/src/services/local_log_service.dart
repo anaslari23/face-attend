@@ -346,7 +346,7 @@ class LocalLogService {
           'accepted': p['accepted'] as bool? ?? false,
           'matched_employee_id': p['matched_employee_id'] as int?,
           'match_score': (p['match_score'] as num? ?? 0.0).toDouble(),
-          'threshold': (p['threshold'] as num? ?? 0.70).toDouble(),
+          'threshold': (p['threshold'] as num? ?? 0.60).toDouble(),
           'device_id': p['device_id'] as String? ?? '',
           'app_version': p['app_version'] as String? ?? '1.0.0',
           'failure_reason': p['failure_reason'] as String?,

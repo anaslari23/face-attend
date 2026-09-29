@@ -19,8 +19,8 @@ class OnDeviceFaceMatcher {
   }) : _client = client,
        _faceService = faceService;
 
-  static const double defaultThreshold = 0.70;
-  static const double reviewThreshold = 0.60;
+  static const double defaultThreshold = 0.60;
+  static const double reviewThreshold = 0.50;
   static const double ambiguityMargin = 0.04;
   static const double adaptiveThreshold = 0.78;
   static const int maxVariantsPerEmployee = 5;

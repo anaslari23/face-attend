@@ -15,6 +15,7 @@ class AttendanceResultScreen extends StatefulWidget {
     this.confidence,
     this.primaryLabel = 'Back Home',
     this.primaryIcon = Icons.home,
+    this.showPrimary = true,
     this.popToFirst = true,
     this.showRetry = true,
     super.key,
@@ -27,6 +28,7 @@ class AttendanceResultScreen extends StatefulWidget {
   final double? confidence;
   final String primaryLabel;
   final IconData primaryIcon;
+  final bool showPrimary;
   final bool popToFirst;
   final bool showRetry;
 
@@ -40,8 +42,11 @@ class _AttendanceResultScreenState extends State<AttendanceResultScreen> {
   @override
   void initState() {
     super.initState();
-    // Auto-pop after 3 seconds for success (thank you screen), 4 seconds for failure
-    _autoPopTimer = Timer(Duration(seconds: widget.success ? 3 : 4), () {
+    // Auto-pop after 2 seconds for success, 3 seconds for failure (or 3/4 if manual buttons enabled)
+    final autoSeconds = widget.showPrimary
+        ? (widget.success ? 3 : 4)
+        : (widget.success ? 2 : 3);
+    _autoPopTimer = Timer(Duration(seconds: autoSeconds), () {
       if (mounted) {
         _navigateBack();
       }
@@ -134,53 +139,66 @@ class _AttendanceResultScreenState extends State<AttendanceResultScreen> {
                         confidence: widget.confidence,
                       ),
                     ),
-                    const SizedBox(height: 24),
-                    AnimatedEntrance(
-                      delay: const Duration(milliseconds: 250),
-                      child: ScaleOnPress(
-                        onTap: _navigateBack,
-                        child: Container(
-                          height: 50,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              colors: [Color(0xFFEDA672), Color(0xFFE57C38)],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                            ),
-                            borderRadius: BorderRadius.circular(12),
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(
-                                  0xFFEDA672,
-                                ).withValues(alpha: 0.25),
-                                blurRadius: 12,
-                                offset: const Offset(0, 4),
+                    if (widget.showPrimary) ...[
+                      const SizedBox(height: 24),
+                      AnimatedEntrance(
+                        delay: const Duration(milliseconds: 250),
+                        child: ScaleOnPress(
+                          onTap: _navigateBack,
+                          child: Container(
+                            height: 50,
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [Color(0xFFEDA672), Color(0xFFE57C38)],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
                               ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                widget.primaryIcon,
-                                color: Colors.white,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                widget.primaryLabel,
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w700,
-                                  color: Colors.white,
-                                  letterSpacing: 0.5,
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: const Color(
+                                    0xFFEDA672,
+                                  ).withValues(alpha: 0.25),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  widget.primaryIcon,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  widget.primaryLabel,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                    ] else ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        'Resuming scanner...',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: FaceAttendColors.ink.withValues(alpha: 0.5),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                     if (widget.showRetry) ...[
                       const SizedBox(height: 12),
                       AnimatedEntrance(

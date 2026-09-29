@@ -12,6 +12,7 @@ import '../services/face_recognition_service.dart';
 import '../services/local_log_service.dart';
 import '../services/on_device_face_matcher.dart';
 import '../widgets/face_scan_view.dart';
+import 'package:face_detection_tflite/face_detection_tflite.dart' as mp;
 
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({required this.session, super.key});
@@ -25,7 +26,7 @@ class AttendanceScreen extends StatefulWidget {
 class _AttendanceScreenState extends State<AttendanceScreen> {
   static const _analysisInterval = Duration(milliseconds: 250);
   static const _detectionWatchdogTimeout = Duration(seconds: 2);
-  static const _stableFrameTarget = 4;
+  static const _stableFrameTarget = 3;
   static const _employeePunchCooldown = Duration(minutes: 2);
 
   final _faceService = FaceRecognitionService();
@@ -68,6 +69,8 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   bool get _autoDetectionEnabled =>
       _scannerState == _ScannerState.detecting ||
       _scannerState == _ScannerState.ready;
+
+  mp.Face? _lastStableFace;
 
   @override
   void initState() {
@@ -246,6 +249,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       });
 
       if (ready && !_autoCaptureStarted) {
+        _lastStableFace = result.faces.single;
         _autoCaptureStarted = true;
         await _captureAndSubmit();
       }
@@ -270,6 +274,30 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
     if (ready) return 'Scanning';
     return 'Hold still';
+  }
+
+  String _messageForFaceError(String? error) {
+    switch (error) {
+      case 'No face detected':
+        return 'No face detected';
+      case 'Multiple faces detected':
+        return 'One person at a time';
+      case 'Move closer to the camera':
+        return 'Move closer to the camera';
+      case 'Move slightly back':
+        return 'Move slightly back';
+      case 'Looking for a face':
+        return 'Looking for a face';
+      case 'Face landmarks not detected':
+        return 'Face not clear';
+      case 'Face too small':
+        return 'Face not clear';
+      default:
+        if (error?.startsWith('ArcFace embedding failed') == true) {
+          return 'Verification failed. Try again.';
+        }
+        return 'Face not clear';
+    }
   }
 
   Future<void> _scan() => _captureAndSubmit();
@@ -309,12 +337,43 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     try {
       if (mounted) {
         setState(() {
-          _message = 'Matching face on device';
+          _message = 'Verifying identity';
           _scannerState = _ScannerState.submitting;
         });
       }
-      final match = await _matcher.matchImagePath(imagePath);
+
+      final bytes = await File(imagePath).readAsBytes();
+      final cachedFace = _lastStableFace;
+      final cachedImageSize = _faceImageSize;
+
+      // Full structural validation on the captured image using the cached face
+      // from stability tracking. Falls back to full detection if cache missed.
+      FaceEmbeddingResult embeddingResult;
+      if (cachedFace != null && cachedImageSize != null) {
+        embeddingResult = await _faceService.embedImageBytes(
+          bytes,
+          isLiveCapture: true,
+          knownFace: cachedFace,
+          knownImageSize: cachedImageSize,
+        );
+      } else {
+        // Fallback: detect and validate from image bytes (slower, rare path)
+        embeddingResult = await _faceService.embedImageBytes(bytes, isLiveCapture: true);
+      }
       await _deleteImageQuietly(imagePath);
+
+      if (!embeddingResult.valid) {
+        final reason = _messageForFaceError(embeddingResult.error);
+        _pauseAfterScan(reason);
+        await _logRejectedScan(reason);
+        return;
+      }
+
+      // Match using pre-computed embedding — no re-detection needed
+      final match = await _matcher.matchEmbedding(
+        embeddingResult.embedding!,
+        embeddingResult.qualityScore,
+      );
 
       final targetPercent = (match.confidence * 100).clamp(0, 100).toDouble();
       final animEmployeeName = match.employeeName;
@@ -632,6 +691,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     _faceOverlays = const [];
     _stableFrames = 0;
     _autoCaptureStarted = false;
+    _lastStableFace = null;
     _matchingName = null;
     _matchingPercent = null;
     _blinkDetected = false;
@@ -672,6 +732,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       _faceOverlays = const [];
       _stableFrames = 0;
       _autoCaptureStarted = false;
+      _lastStableFace = null;
       _lastValidFrameAt = DateTime.now();
     });
   }

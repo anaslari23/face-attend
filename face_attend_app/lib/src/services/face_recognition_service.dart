@@ -33,40 +33,65 @@ class FaceRecognitionService {
     return embedImageBytes(bytes, isLiveCapture: isLiveCapture);
   }
 
-  Future<FaceEmbeddingResult> embedImageBytes(Uint8List imageBytes, {bool isLiveCapture = false}) async {
-    final detector = await _readyDetector();
-    final faces = await detector.detectFacesFromBytes(
-      imageBytes,
-      mode: mp.FaceDetectionMode.full,
-    );
-    final validation = _validateFaces(faces, isLiveCapture: isLiveCapture);
-    if (!validation.valid) {
-      return FaceEmbeddingResult.failure(
-        validation.error ?? 'Face not clear',
-        boundingBox: validation.boundingBox,
-        imageSize: validation.imageSize,
+  Future<FaceEmbeddingResult> embedImageBytes(Uint8List imageBytes, {bool isLiveCapture = false, mp.Face? knownFace, Size? knownImageSize}) async {
+    mp.Face? faceToUse = knownFace;
+    Size resolvedImageSize = knownImageSize ?? const Size(0, 0);
+
+    if (faceToUse != null) {
+      // Use the pre-computed face from stability tracking — skip re-detection.
+      final validation = _validateSingleFace(faceToUse, resolvedImageSize);
+      if (!validation.valid) {
+        return FaceEmbeddingResult.failure(
+          validation.error ?? 'Face not clear',
+          boundingBox: validation.boundingBox,
+          imageSize: validation.imageSize,
+        );
+      }
+    } else {
+      // Fallback: detect face from image bytes.
+      final detector = await _readyDetector();
+      final faces = await detector.detectFacesFromBytes(
+        imageBytes,
+        mode: mp.FaceDetectionMode.full,
       );
+      final validation = _validateFaces(faces, isLiveCapture: isLiveCapture);
+      if (!validation.valid) {
+        return FaceEmbeddingResult.failure(
+          validation.error ?? 'Face not clear',
+          boundingBox: validation.boundingBox,
+          imageSize: validation.imageSize,
+        );
+      }
+      faceToUse = faces.single;
+      resolvedImageSize = validation.imageSize ?? resolvedImageSize;
     }
+
     final Float32List embedding;
     try {
       embedding = await _arcFace.embed(
         imageBytes: imageBytes,
-        face: faces.single,
+        face: faceToUse,
       );
     } catch (error) {
       return FaceEmbeddingResult.failure(
         'ArcFace embedding failed: $error',
-        boundingBox: validation.boundingBox,
-        imageSize: validation.imageSize,
+        boundingBox: _rect(faceToUse.boundingBox),
+        imageSize: resolvedImageSize,
       );
     }
+    final qualityScore = _qualityScore(
+      _rect(faceToUse.boundingBox),
+      resolvedImageSize,
+    );
     return FaceEmbeddingResult.success(
       embedding: embedding,
-      qualityScore: validation.qualityScore,
-      boundingBox: validation.boundingBox,
-      imageSize: validation.imageSize,
+      qualityScore: qualityScore,
+      boundingBox: _rect(faceToUse.boundingBox),
+      imageSize: resolvedImageSize,
     );
   }
+
+  static Rect _rect(mp.Rect box) => Rect.fromLTRB(box.left, box.top, box.right, box.bottom);
 
   Future<FaceValidationResult> validateCameraImage({
     required CameraImage image,
@@ -124,7 +149,14 @@ class FaceRecognitionService {
       rotation: rotation,
       maxDim: maxDim,
     );
-    return _validateMultipleFaces(faces, imageSize: imageSize);
+    return _validateMultipleFaces(faces, imageSize: imageSize, strict: false);
+  }
+
+  /// Lightweight validation for real-time stability tracking.
+  /// Only checks detection confidence and basic face size — skips
+  /// expensive anatomical checks. Use at capture time for full validation.
+  Future<FaceValidationResult> validateCaptureFace(mp.Face face, Size imageSize) async {
+    return _validateSingleFace(face, imageSize);
   }
 
   Future<void> close() async {
@@ -192,6 +224,7 @@ class FaceRecognitionService {
   MultiFaceValidationResult _validateMultipleFaces(
     List<mp.Face> faces, {
     required Size imageSize,
+    bool strict = false,
   }) {
     if (faces.isEmpty) {
       return MultiFaceValidationResult(
@@ -219,7 +252,9 @@ class FaceRecognitionService {
     final validFaces = <DetectedFace>[];
     var rejectedMessage = 'Face not clear';
     for (final face in faces) {
-      final validation = _validateSingleFace(face, imageSize);
+      final validation = strict
+          ? _validateSingleFace(face, imageSize)
+          : _validateTracking(face, imageSize);
       if (validation.valid && validation.boundingBox != null) {
         validFaces.add(
           DetectedFace(
@@ -465,6 +500,30 @@ class FaceRecognitionService {
     final eyeDistance = (leftEye.x - rightEye.x).abs();
     if (eyeDistance <= 0) return 0;
     return ((nose.x - eyeCenterX) / eyeDistance).clamp(-1.0, 1.0);
+  }
+
+  // Lightweight validation for real-time stability tracking.
+  // Only 3 fast checks — the full 11-point structural validation
+  // runs once at capture time via _validateCapture().
+  FaceValidationResult _validateTracking(mp.Face face, Size imageSize) {
+    if (face.detectionData.score < 0.60) {
+      return FaceValidationResult.failure('Looking for a face');
+    }
+
+    final box = face.boundingBox;
+    final rect = Rect.fromLTRB(box.left, box.top, box.right, box.bottom);
+
+    final shortSide = min(imageSize.width, imageSize.height);
+    final minFaceSize = shortSide * 0.20;
+    if (rect.width < minFaceSize || rect.height < minFaceSize) {
+      return FaceValidationResult.failure('Move closer to the camera');
+    }
+
+    return FaceValidationResult.success(
+      qualityScore: face.detectionData.score.toDouble(),
+      boundingBox: rect,
+      imageSize: imageSize,
+    );
   }
 }
 

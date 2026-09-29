@@ -21,7 +21,7 @@ class OnDeviceFaceMatcher {
 
   static const double defaultThreshold = 0.70;
   static const double reviewThreshold = 0.60;
-  static const double ambiguityMargin = 0.06;
+  static const double ambiguityMargin = 0.04;
   static const double adaptiveThreshold = 0.78;
   static const int maxVariantsPerEmployee = 5;
   static const String modelVersion = 'arcface-w600k-r50-align-v3';
@@ -179,7 +179,33 @@ class OnDeviceFaceMatcher {
       );
     }
 
-    final query = embeddingResult.embedding!;
+    return _matchEmbedding(embeddingResult.embedding!, embeddingResult.qualityScore);
+  }
+
+  /// Skip face detection and re-validation — use a pre-computed embedding
+  /// from a captured image whose face was already validated at capture time.
+  Future<LocalFaceMatchResult> matchEmbedding(Float32List embedding, double qualityScore) async {
+    final index = await readyIndex();
+    if (index.records.isEmpty) {
+      return LocalFaceMatchResult.rejected(
+        confidence: 0,
+        threshold: index.threshold,
+        reason: 'no_registered_embeddings',
+      );
+    }
+    return _matchEmbedding(embedding, qualityScore);
+  }
+
+  LocalFaceMatchResult _matchEmbedding(Float32List query, double qualityScore) {
+    final index = _index;
+    if (index == null || index.records.isEmpty) {
+      return LocalFaceMatchResult.rejected(
+        confidence: 0,
+        threshold: OnDeviceFaceMatcher.defaultThreshold,
+        reason: 'no_registered_embeddings',
+      );
+    }
+
     final candidates = <_Candidate>[];
     for (final record in index.records) {
       candidates.add(
@@ -194,10 +220,7 @@ class OnDeviceFaceMatcher {
           _Candidate(
             record: record,
             source: 'adaptive_scan',
-            score: _cosine(
-              query,
-              Float32List.fromList(record.adaptiveEmbeddings[i]),
-            ),
+            score: _cosine(query, Float32List.fromList(record.adaptiveEmbeddings[i])),
           ),
         );
       }
@@ -248,7 +271,7 @@ class OnDeviceFaceMatcher {
     }
 
     if (best.score >= adaptiveThreshold) {
-      await _addAdaptiveEmbedding(best.record.employeeId, query);
+      _addAdaptiveEmbedding(best.record.employeeId, query);
     }
 
     return LocalFaceMatchResult.accepted(
@@ -258,7 +281,7 @@ class OnDeviceFaceMatcher {
       threshold: threshold,
       secondBestConfidence: secondScore,
       embeddingSource: best.source,
-      livenessScore: embeddingResult.qualityScore,
+      livenessScore: qualityScore,
     );
   }
 

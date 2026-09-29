@@ -249,7 +249,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       });
 
       if (ready && !_autoCaptureStarted) {
-        _lastStableFace = result.faces.single;
+        _lastStableFace = result.faces.single.face;
         _autoCaptureStarted = true;
         await _captureAndSubmit();
       }

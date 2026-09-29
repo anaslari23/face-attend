@@ -1,9 +1,12 @@
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
+import 'dart:ui';
 
 import 'package:camera/camera.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart' as mp;
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'arcface_embedding_service.dart';
@@ -75,23 +78,21 @@ class FaceRecognitionService {
     } catch (error) {
       return FaceEmbeddingResult.failure(
         'ArcFace embedding failed: $error',
-        boundingBox: _rect(faceToUse.boundingBox),
+        boundingBox: Rect.fromLTRB(faceToUse.boundingBox.left, faceToUse.boundingBox.top, faceToUse.boundingBox.right, faceToUse.boundingBox.bottom),
         imageSize: resolvedImageSize,
       );
     }
     final qualityScore = _qualityScore(
-      _rect(faceToUse.boundingBox),
+      Rect.fromLTRB(faceToUse.boundingBox.left, faceToUse.boundingBox.top, faceToUse.boundingBox.right, faceToUse.boundingBox.bottom),
       resolvedImageSize,
     );
     return FaceEmbeddingResult.success(
       embedding: embedding,
       qualityScore: qualityScore,
-      boundingBox: _rect(faceToUse.boundingBox),
+      boundingBox: Rect.fromLTRB(faceToUse.boundingBox.left, faceToUse.boundingBox.top, faceToUse.boundingBox.right, faceToUse.boundingBox.bottom),
       imageSize: resolvedImageSize,
     );
   }
-
-  static Rect _rect(mp.Rect box) => Rect.fromLTRB(box.left, box.top, box.right, box.bottom);
 
   Future<FaceValidationResult> validateCameraImage({
     required CameraImage image,
@@ -258,6 +259,7 @@ class FaceRecognitionService {
       if (validation.valid && validation.boundingBox != null) {
         validFaces.add(
           DetectedFace(
+            face: face,
             boundingBox: validation.boundingBox!,
             qualityScore: validation.qualityScore,
             yawEstimate: _yawEstimate(face),
@@ -634,11 +636,13 @@ class MultiFaceValidationResult {
 
 class DetectedFace {
   const DetectedFace({
+    required this.face,
     required this.boundingBox,
     required this.qualityScore,
     required this.yawEstimate,
   });
 
+  final mp.Face face;
   final Rect boundingBox;
   final double qualityScore;
   final double yawEstimate;

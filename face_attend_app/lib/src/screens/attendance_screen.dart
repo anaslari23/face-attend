@@ -12,7 +12,6 @@ import '../services/face_recognition_service.dart';
 import '../services/local_log_service.dart';
 import '../services/on_device_face_matcher.dart';
 import '../widgets/face_scan_view.dart';
-import 'package:face_detection_tflite/face_detection_tflite.dart' as mp;
 
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({required this.session, super.key});
@@ -63,8 +62,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   bool get _autoDetectionEnabled =>
       _scannerState == _ScannerState.detecting ||
       _scannerState == _ScannerState.ready;
-
-  mp.Face? _lastStableFace;
 
   @override
   void initState() {
@@ -243,7 +240,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       });
 
       if (ready && !_autoCaptureStarted) {
-        _lastStableFace = result.faces.single.face;
         _autoCaptureStarted = true;
         await _captureAndSubmit();
       }
@@ -341,23 +337,10 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       }
 
       final bytes = await File(imagePath).readAsBytes();
-      final cachedFace = _lastStableFace;
-      final cachedImageSize = _faceImageSize;
 
-      // Full structural validation on the captured image using the cached face
-      // from stability tracking. Falls back to full detection if cache missed.
-      FaceEmbeddingResult embeddingResult;
-      if (cachedFace != null && cachedImageSize != null) {
-        embeddingResult = await _faceService.embedImageBytes(
-          bytes,
-          isLiveCapture: true,
-          knownFace: cachedFace,
-          knownImageSize: cachedImageSize,
-        );
-      } else {
-        // Fallback: detect and validate from image bytes (slower, rare path)
-        embeddingResult = await _faceService.embedImageBytes(bytes, isLiveCapture: true);
-      }
+      // Detect face directly on the captured still photo bytes so landmark coordinates
+      // match the photo's exact resolution for ArcFace alignment.
+      final embeddingResult = await _faceService.embedImageBytes(bytes, isLiveCapture: true);
       await _deleteImageQuietly(imagePath);
 
       if (!embeddingResult.valid) {
@@ -693,7 +676,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     _faceOverlays = const [];
     _stableFrames = 0;
     _autoCaptureStarted = false;
-    _lastStableFace = null;
     _matchingName = null;
     _matchingPercent = null;
     _blinkDetected = false;
@@ -734,7 +716,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       _faceOverlays = const [];
       _stableFrames = 0;
       _autoCaptureStarted = false;
-      _lastStableFace = null;
       _lastValidFrameAt = DateTime.now();
     });
   }

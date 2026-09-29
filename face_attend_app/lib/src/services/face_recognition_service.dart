@@ -1,12 +1,10 @@
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
-import 'dart:ui';
 
 import 'package:camera/camera.dart';
 import 'package:face_detection_tflite/face_detection_tflite.dart' as mp;
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'arcface_embedding_service.dart';
@@ -36,38 +34,25 @@ class FaceRecognitionService {
     return embedImageBytes(bytes, isLiveCapture: isLiveCapture);
   }
 
-  Future<FaceEmbeddingResult> embedImageBytes(Uint8List imageBytes, {bool isLiveCapture = false, mp.Face? knownFace, Size? knownImageSize}) async {
-    mp.Face? faceToUse = knownFace;
-    Size resolvedImageSize = knownImageSize ?? const Size(0, 0);
-
-    if (faceToUse != null) {
-      // Use the pre-computed face from stability tracking — skip re-detection.
-      final validation = _validateSingleFace(faceToUse, resolvedImageSize);
-      if (!validation.valid) {
-        return FaceEmbeddingResult.failure(
-          validation.error ?? 'Face not clear',
-          boundingBox: validation.boundingBox,
-          imageSize: validation.imageSize,
-        );
-      }
-    } else {
-      // Fallback: detect face from image bytes.
-      final detector = await _readyDetector();
-      final faces = await detector.detectFacesFromBytes(
-        imageBytes,
-        mode: mp.FaceDetectionMode.full,
+  Future<FaceEmbeddingResult> embedImageBytes(
+    Uint8List imageBytes, {
+    bool isLiveCapture = false,
+  }) async {
+    final detector = await _readyDetector();
+    final faces = await detector.detectFacesFromBytes(
+      imageBytes,
+      mode: mp.FaceDetectionMode.full,
+    );
+    final validation = _validateFaces(faces, isLiveCapture: isLiveCapture);
+    if (!validation.valid) {
+      return FaceEmbeddingResult.failure(
+        validation.error ?? 'Face not clear',
+        boundingBox: validation.boundingBox,
+        imageSize: validation.imageSize,
       );
-      final validation = _validateFaces(faces, isLiveCapture: isLiveCapture);
-      if (!validation.valid) {
-        return FaceEmbeddingResult.failure(
-          validation.error ?? 'Face not clear',
-          boundingBox: validation.boundingBox,
-          imageSize: validation.imageSize,
-        );
-      }
-      faceToUse = faces.single;
-      resolvedImageSize = validation.imageSize ?? resolvedImageSize;
     }
+    final faceToUse = faces.single;
+    final resolvedImageSize = validation.imageSize ?? faceToUse.originalSize;
 
     final Float32List embedding;
     try {
@@ -78,18 +63,33 @@ class FaceRecognitionService {
     } catch (error) {
       return FaceEmbeddingResult.failure(
         'ArcFace embedding failed: $error',
-        boundingBox: Rect.fromLTRB(faceToUse.boundingBox.left, faceToUse.boundingBox.top, faceToUse.boundingBox.right, faceToUse.boundingBox.bottom),
+        boundingBox: Rect.fromLTRB(
+          faceToUse.boundingBox.left,
+          faceToUse.boundingBox.top,
+          faceToUse.boundingBox.right,
+          faceToUse.boundingBox.bottom,
+        ),
         imageSize: resolvedImageSize,
       );
     }
     final qualityScore = _qualityScore(
-      Rect.fromLTRB(faceToUse.boundingBox.left, faceToUse.boundingBox.top, faceToUse.boundingBox.right, faceToUse.boundingBox.bottom),
+      Rect.fromLTRB(
+        faceToUse.boundingBox.left,
+        faceToUse.boundingBox.top,
+        faceToUse.boundingBox.right,
+        faceToUse.boundingBox.bottom,
+      ),
       resolvedImageSize,
     );
     return FaceEmbeddingResult.success(
       embedding: embedding,
       qualityScore: qualityScore,
-      boundingBox: Rect.fromLTRB(faceToUse.boundingBox.left, faceToUse.boundingBox.top, faceToUse.boundingBox.right, faceToUse.boundingBox.bottom),
+      boundingBox: Rect.fromLTRB(
+        faceToUse.boundingBox.left,
+        faceToUse.boundingBox.top,
+        faceToUse.boundingBox.right,
+        faceToUse.boundingBox.bottom,
+      ),
       imageSize: resolvedImageSize,
     );
   }
@@ -289,8 +289,8 @@ class FaceRecognitionService {
   }
 
   FaceValidationResult _validateSingleFace(mp.Face face, Size imageSize) {
-    // 1. Check detector confidence score (filter out partial/forehead/edge false positives)
-    if (face.detectionData.score < 0.78) {
+    // 1. Check detector confidence score (filter out false positive noise)
+    if (face.detectionData.score < 0.55) {
       return FaceValidationResult.failure('Looking for a face');
     }
 
@@ -305,9 +305,9 @@ class FaceRecognitionService {
     final box = face.boundingBox;
     final rect = Rect.fromLTRB(box.left, box.top, box.right, box.bottom);
 
-    // 2. Ensure full face is inside the camera frame with safety margin away from edges (not cut off)
-    final marginX = imageSize.width * 0.08;
-    final marginY = imageSize.height * 0.08;
+    // 2. Ensure face is safely inside the camera frame
+    final marginX = imageSize.width * 0.02;
+    final marginY = imageSize.height * 0.02;
     if (rect.left < marginX ||
         rect.right > imageSize.width - marginX ||
         rect.top < marginY ||
@@ -319,39 +319,24 @@ class FaceRecognitionService {
       );
     }
 
-    // 3. Ensure all individual facial landmarks are safely inside the margins
+    // 3. Ensure face proportions and aspect ratio (human face is generally between 0.45 and 1.45)
+    final aspectRatio = rect.width / rect.height;
+    if (aspectRatio < 0.45 || aspectRatio > 1.45) {
+      return FaceValidationResult.failure(
+        'Keep your full face in the camera view',
+        boundingBox: rect,
+        imageSize: imageSize,
+      );
+    }
+
+    // 4. Basic vertical order: Eyes above Nose, Nose above Mouth
     final leftEye = landmarks.leftEye!;
     final rightEye = landmarks.rightEye!;
     final noseTip = landmarks.noseTip!;
     final mouth = landmarks.mouth!;
-    for (final pt in [leftEye, rightEye, noseTip, mouth]) {
-      if (pt.x < marginX ||
-          pt.x > imageSize.width - marginX ||
-          pt.y < marginY ||
-          pt.y > imageSize.height - marginY) {
-        return FaceValidationResult.failure(
-          'Keep your full face in the camera view',
-          boundingBox: rect,
-          imageSize: imageSize,
-        );
-      }
-    }
-
-    // 4. Ensure face proportions and aspect ratio (human face is taller than wide, not flat/partial)
-    final aspectRatio = rect.width / rect.height;
-    if (aspectRatio < 0.58 || aspectRatio > 1.25) {
-      return FaceValidationResult.failure(
-        'Keep your full face in the camera view',
-        boundingBox: rect,
-        imageSize: imageSize,
-      );
-    }
-
-    // 5. Anatomical Vertical Feature Separation (Forehead -> Eyes -> Nose -> Mouth -> Chin):
     final eyeY = (leftEye.y + rightEye.y) / 2;
 
-    // (a) Eyes must be well below the top of the box (verifies forehead is present)
-    if (eyeY - rect.top < rect.height * 0.15) {
+    if (noseTip.y <= eyeY || mouth.y <= noseTip.y) {
       return FaceValidationResult.failure(
         'Keep your full face in the camera view',
         boundingBox: rect,
@@ -359,78 +344,9 @@ class FaceRecognitionService {
       );
     }
 
-    // (b) Eyes must not be too low in the box
-    if (eyeY - rect.top > rect.height * 0.60) {
-      return FaceValidationResult.failure(
-        'Keep your full face in the camera view',
-        boundingBox: rect,
-        imageSize: imageSize,
-      );
-    }
-
-    // (c) Nose must be clearly below eyes
-    if (noseTip.y <= eyeY + rect.height * 0.07) {
-      return FaceValidationResult.failure(
-        'Keep your full face in the camera view',
-        boundingBox: rect,
-        imageSize: imageSize,
-      );
-    }
-
-    // (d) Mouth must be clearly below nose
-    if (mouth.y <= noseTip.y + rect.height * 0.07) {
-      return FaceValidationResult.failure(
-        'Keep your full face in the camera view',
-        boundingBox: rect,
-        imageSize: imageSize,
-      );
-    }
-
-    // (e) Chin must have clearance below mouth
-    if (rect.bottom - mouth.y < rect.height * 0.08) {
-      return FaceValidationResult.failure(
-        'Keep your full face in the camera view',
-        boundingBox: rect,
-        imageSize: imageSize,
-      );
-    }
-
-    // (f) Eye-to-mouth vertical span must be substantial (at least 28% of face height)
-    if ((mouth.y - eyeY) < rect.height * 0.28) {
-      return FaceValidationResult.failure(
-        'Keep your full face in the camera view',
-        boundingBox: rect,
-        imageSize: imageSize,
-      );
-    }
-
-    // 6. Inter-ocular distance (eyes must be separated appropriately for a full face)
-    final eyeDistance = (leftEye.x - rightEye.x).abs();
-    if (eyeDistance < rect.width * 0.22 || eyeDistance > rect.width * 0.50) {
-      return FaceValidationResult.failure(
-        'Keep your full face in the camera view',
-        boundingBox: rect,
-        imageSize: imageSize,
-      );
-    }
-
-    // 7. Ear tragions (verify lateral face extent if available)
-    final leftTragion = landmarks.leftEyeTragion;
-    final rightTragion = landmarks.rightEyeTragion;
-    if (leftTragion != null && rightTragion != null) {
-      final tragionDistance = (leftTragion.x - rightTragion.x).abs();
-      if (tragionDistance < rect.width * 0.40) {
-        return FaceValidationResult.failure(
-          'Keep your full face in the camera view',
-          boundingBox: rect,
-          imageSize: imageSize,
-        );
-      }
-    }
-
-    // 8. Ensure face size is adequate and not too far or too close
+    // 5. Ensure face size is adequate and not too far or too close
     final shortSide = min(imageSize.width, imageSize.height);
-    final minFaceSize = shortSide * 0.28;
+    final minFaceSize = shortSide * 0.18;
     if (rect.width < minFaceSize || rect.height < minFaceSize) {
       return FaceValidationResult.failure(
         'Move closer to the camera',
@@ -438,7 +354,7 @@ class FaceRecognitionService {
         imageSize: imageSize,
       );
     }
-    final maxFaceSize = shortSide * 0.85;
+    final maxFaceSize = shortSide * 0.88;
     if (rect.width > maxFaceSize || rect.height > maxFaceSize) {
       return FaceValidationResult.failure(
         'Move slightly back',
@@ -447,9 +363,9 @@ class FaceRecognitionService {
       );
     }
 
-    // 9. Ensure the face is directed straight at the camera (not turned away)
+    // 6. Ensure the face is facing towards the camera (allow natural head turns up to ~25-30 degrees)
     final yaw = _yawEstimate(face);
-    if (yaw.abs() > 0.18) {
+    if (yaw.abs() > 0.35) {
       return FaceValidationResult.failure(
         'Look straight at the camera',
         boundingBox: rect,
@@ -457,9 +373,10 @@ class FaceRecognitionService {
       );
     }
 
-    // 10. Ensure head is not excessively tilted sideways
+    // 7. Ensure head is not excessively tilted sideways
+    final eyeDistance = (leftEye.x - rightEye.x).abs();
     final eyeDy = (leftEye.y - rightEye.y).abs();
-    if (eyeDistance > 0 && (eyeDy / eyeDistance) > 0.25) {
+    if (eyeDistance > 0 && (eyeDy / eyeDistance) > 0.35) {
       return FaceValidationResult.failure(
         'Keep your head straight',
         boundingBox: rect,
@@ -467,9 +384,9 @@ class FaceRecognitionService {
       );
     }
 
-    // 11. Check quality score
+    // 8. Quality score
     final qualityScore = _qualityScore(rect, imageSize);
-    if (qualityScore < 0.35) {
+    if (qualityScore < 0.30) {
       return FaceValidationResult.failure(
         'Face not clear',
         boundingBox: rect,
@@ -505,10 +422,8 @@ class FaceRecognitionService {
   }
 
   // Lightweight validation for real-time stability tracking.
-  // Only 3 fast checks — the full 11-point structural validation
-  // runs once at capture time via _validateCapture().
   FaceValidationResult _validateTracking(mp.Face face, Size imageSize) {
-    if (face.detectionData.score < 0.60) {
+    if (face.detectionData.score < 0.55) {
       return FaceValidationResult.failure('Looking for a face');
     }
 
@@ -516,9 +431,14 @@ class FaceRecognitionService {
     final rect = Rect.fromLTRB(box.left, box.top, box.right, box.bottom);
 
     final shortSide = min(imageSize.width, imageSize.height);
-    final minFaceSize = shortSide * 0.20;
+    final minFaceSize = shortSide * 0.18;
     if (rect.width < minFaceSize || rect.height < minFaceSize) {
       return FaceValidationResult.failure('Move closer to the camera');
+    }
+
+    final maxFaceSize = shortSide * 0.88;
+    if (rect.width > maxFaceSize || rect.height > maxFaceSize) {
+      return FaceValidationResult.failure('Move slightly back');
     }
 
     return FaceValidationResult.success(

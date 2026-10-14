@@ -19,8 +19,8 @@ class OnDeviceFaceMatcher {
   }) : _client = client,
        _faceService = faceService;
 
-  static const double defaultThreshold = 0.70;
-  static const double reviewThreshold = 0.60;
+  static const double defaultThreshold = 0.60;
+  static const double reviewThreshold = 0.50;
   static const double ambiguityMargin = 0.06;
   static const double adaptiveThreshold = 0.78;
   static const int maxVariantsPerEmployee = 5;
@@ -31,13 +31,7 @@ class OnDeviceFaceMatcher {
   final FaceRecognitionService _faceService;
   LocalFaceIndex? _index;
 
-  double get threshold {
-    final idx = _index;
-    if (idx != null && idx.threshold > 0) {
-      return idx.threshold;
-    }
-    return defaultThreshold;
-  }
+  double get threshold => defaultThreshold;
 
   Future<FaceIndexSyncResult> sync() async {
     final stored = await LocalFaceIndexStore.read();
@@ -138,7 +132,7 @@ class OnDeviceFaceMatcher {
 
     final index = LocalFaceIndex(
       modelVersion: effectiveModelVersion,
-      threshold: remote.threshold,
+      threshold: defaultThreshold,
       syncedAt: DateTime.now(),
       records: records,
     );
@@ -211,7 +205,7 @@ class OnDeviceFaceMatcher {
         .cast<_Candidate?>()
         .firstWhere((candidate) => candidate != null, orElse: () => null);
     final secondScore = secondBestDifferent?.score;
-    final threshold = index.threshold > 0 ? index.threshold : defaultThreshold;
+    final threshold = defaultThreshold;
     debugPrint(
       'FaceAttend match: best=${best.record.employeeId} '
       '${best.record.employeeName} score=${best.score.toStringAsFixed(4)} '

@@ -12,6 +12,23 @@ import '../services/face_recognition_service.dart';
 import '../services/local_log_service.dart';
 import '../services/on_device_face_matcher.dart';
 import '../widgets/face_scan_view.dart';
+import '../services/work_hours_service.dart';
+
+class _PendingEarlyCheckout {
+  const _PendingEarlyCheckout({
+    required this.match,
+    required this.shiftStatus,
+    required this.deviceId,
+    required this.appVersion,
+    required this.now,
+  });
+
+  final LocalFaceMatchResult match;
+  final EmployeeShiftStatus shiftStatus;
+  final String deviceId;
+  final String appVersion;
+  final DateTime now;
+}
 
 class AttendanceScreen extends StatefulWidget {
   const AttendanceScreen({required this.session, super.key});
@@ -52,13 +69,17 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
   bool _eyesClosedTransition = false;
   DateTime? _lastFaceSeenTime;
   double _currentBrightness = 120.0;
+  _PendingEarlyCheckout? _pendingCheckout;
+  Timer? _floatingCheckoutDismissTimer;
 
   bool get _busy =>
       _scannerState == _ScannerState.loading ||
       _scannerState == _ScannerState.capturing ||
-      _scannerState == _ScannerState.submitting;
+      _scannerState == _ScannerState.submitting ||
+      _pendingCheckout != null;
 
   bool get _canScan =>
+      _pendingCheckout == null &&
       _camera != null &&
       _camera!.value.isInitialized &&
       _scannerState != _ScannerState.loading &&
@@ -66,8 +87,9 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       _scannerState != _ScannerState.submitting;
 
   bool get _autoDetectionEnabled =>
-      _scannerState == _ScannerState.detecting ||
-      _scannerState == _ScannerState.ready;
+      _pendingCheckout == null &&
+      (_scannerState == _ScannerState.detecting ||
+          _scannerState == _ScannerState.ready);
 
   @override
   void initState() {
@@ -142,6 +164,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
 
   @override
   void dispose() {
+    _floatingCheckoutDismissTimer?.cancel();
     _detectionWatchdog?.cancel();
     if (_camera?.value.isStreamingImages == true) {
       _camera?.stopImageStream();
@@ -366,6 +389,38 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       final accepted =
           match.matched && match.employeeId != null && liveAccepted;
       final inCooldown = accepted && _isEmployeeInCooldown(match.employeeId!);
+      final now = DateTime.now();
+
+      // Check shift status: if already checked in today and worked LESS than 8 hours,
+      // show the floating "Want to check out now?" button instead of auto-punching!
+      EmployeeShiftStatus? shiftStatus;
+      if (accepted && !inCooldown && match.employeeId != null) {
+        shiftStatus = await WorkHoursService.instance.getEmployeeShiftStatus(
+          match.employeeId!,
+          now: now,
+        );
+
+        if (shiftStatus.hasCheckedIn && shiftStatus.isUnder8Hours) {
+          await animationFuture;
+          if (!mounted) return;
+          _clearFaceStateForDisplay();
+
+          _triggerFloatingCheckoutPrompt(
+            _PendingEarlyCheckout(
+              match: match,
+              shiftStatus: shiftStatus,
+              deviceId: deviceId,
+              appVersion: appVersion,
+              now: now,
+            ),
+          );
+          return;
+        }
+      }
+
+      final punchType = (shiftStatus != null && shiftStatus.hasCheckedIn)
+          ? 'check_out'
+          : 'check_in';
 
       final Map<String, dynamic> payload = {
         'accepted': accepted && !inCooldown,
@@ -374,6 +429,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         'threshold': match.threshold,
         'device_id': deviceId,
         'app_version': appVersion,
+        'punch_type': punchType,
         'failure_reason': accepted
             ? inCooldown
                   ? 'cooldown'
@@ -389,7 +445,6 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
         'spoof_score': match.livenessPassed ? 0.0 : 1.0,
       };
 
-      final now = DateTime.now();
       final employeeName = match.employeeName ?? 'Unknown Employee';
       final logId =
           'log_${now.millisecondsSinceEpoch}_${match.employeeId ?? 0}';
@@ -436,6 +491,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
           spoofScore: (payload['spoof_score'] as num).toDouble(),
           timestamp: backendTimestamp,
           punchTime: backendTimestamp,
+          punchType: punchType,
           fullLogData: fullLogData,
         );
         // 2. Mark local log as synced
@@ -482,13 +538,18 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       if (!mounted) return;
       _clearFaceStateForDisplay();
       _showSingleFaceLabel(match, punch);
+      final hour12 = now.hour % 12 == 0 ? 12 : now.hour % 12;
+      final minutePad = now.minute.toString().padLeft(2, '0');
+      final period = now.hour >= 12 ? 'PM' : 'AM';
+      final timeFormatted = '$hour12:$minutePad $period';
+
       await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => AttendanceResultScreen(
             success: punch.accepted,
             title: punch.accepted ? 'Thank you' : 'Face match failed',
             message: punch.accepted
-                ? 'Your attendance has been recorded.'
+                ? 'Your attendance has been recorded at $timeFormatted.'
                 : _messageForRejectedMatch(
                     match,
                     inCooldown ? 'cooldown' : match.reason,
@@ -531,7 +592,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       'accepted': false,
       'matched_employee_id': null,
       'match_score': 0.0,
-      'threshold': 0.70,
+      'threshold': 0.60,
       'device_id': deviceId,
       'app_version': appVersion,
       'failure_reason': error,
@@ -564,7 +625,7 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
       await _client.punch(
         accepted: false,
         matchScore: 0,
-        threshold: 0.70,
+        threshold: 0.60,
         deviceId: deviceId,
         appVersion: appVersion,
         failureReason: error,
@@ -732,132 +793,452 @@ class _AttendanceScreenState extends State<AttendanceScreen> {
     }
   }
 
+  void _triggerFloatingCheckoutPrompt(_PendingEarlyCheckout pending) {
+    _floatingCheckoutDismissTimer?.cancel();
+    setState(() {
+      _pendingCheckout = pending;
+      _message = 'Matched: ${pending.match.employeeName ?? "Employee"}';
+    });
+
+    // Auto-dismiss after 8 seconds if employee does not click
+    _floatingCheckoutDismissTimer = Timer(const Duration(seconds: 8), () {
+      if (mounted && _pendingCheckout != null) {
+        _dismissFloatingCheckout();
+      }
+    });
+  }
+
+  void _dismissFloatingCheckout() {
+    _floatingCheckoutDismissTimer?.cancel();
+    setState(() {
+      _pendingCheckout = null;
+      _message = 'Looking for a face';
+    });
+    _resetDetectionState(message: 'Looking for a face');
+  }
+
+  Future<void> _executeCheckoutPunch(_PendingEarlyCheckout pending) async {
+    _floatingCheckoutDismissTimer?.cancel();
+    final match = pending.match;
+    final shiftStatus = pending.shiftStatus;
+    final deviceId = pending.deviceId;
+    final appVersion = pending.appVersion;
+    final now = DateTime.now();
+    final employeeName = match.employeeName ?? 'Employee';
+
+    setState(() {
+      _pendingCheckout = null;
+      _message = 'Recording check-out for $employeeName...';
+      _scannerState = _ScannerState.submitting;
+    });
+
+    final checkInIso = shiftStatus.checkInTime?.toIso8601String() ?? '';
+    final checkOutIso = now.toIso8601String();
+    final workedHours = shiftStatus.workedHoursFormatted;
+    final workedMinutes = shiftStatus.workedDuration.inMinutes;
+
+    final Map<String, dynamic> payload = {
+      'accepted': true,
+      'matched_employee_id': match.employeeId,
+      'match_score': match.confidence,
+      'threshold': match.threshold,
+      'device_id': deviceId,
+      'app_version': appVersion,
+      'failure_reason': null,
+      'second_best_confidence': match.secondBestConfidence,
+      'embedding_source': match.embeddingSource,
+      'needs_review': match.needsReview,
+      'liveness_passed': match.livenessPassed,
+      'liveness_score': match.livenessScore,
+      'spoof_score': 0.0,
+      'punch_type': 'check_out',
+      'work_hours': workedHours,
+      'worked_minutes': workedMinutes,
+      'check_in_time': checkInIso,
+      'check_out_time': checkOutIso,
+      'is_early_checkout': true,
+    };
+
+    final logId = 'log_${now.millisecondsSinceEpoch}_${match.employeeId ?? 0}';
+    final backendTimestamp = LocalLogService.instance.formatBackendTimestamp(now);
+    final fullLogData = {
+      'local_log_id': logId,
+      'local_timestamp': now.toIso8601String(),
+      'backend_timestamp': backendTimestamp,
+      'employee_name': employeeName,
+      'is_synced': false,
+      'sync_error': null,
+      'payload': payload,
+      'punch_type': 'check_out',
+      'work_hours': workedHours,
+      'worked_minutes': workedMinutes,
+      'check_in_time': checkInIso,
+      'check_out_time': checkOutIso,
+    };
+
+    await LocalLogService.instance.addLog(
+      id: logId,
+      timestamp: now,
+      payload: payload,
+      employeeName: employeeName,
+      isSynced: false,
+    );
+
+    PunchResult punch;
+    try {
+      punch = await _client.punch(
+        accepted: true,
+        matchedEmployeeId: match.employeeId,
+        matchScore: (payload['match_score'] as num).toDouble(),
+        threshold: (payload['threshold'] as num).toDouble(),
+        deviceId: payload['device_id'] as String,
+        appVersion: payload['app_version'] as String,
+        secondBestConfidence: payload['second_best_confidence'] != null
+            ? (payload['second_best_confidence'] as num).toDouble()
+            : null,
+        embeddingSource: payload['embedding_source'] as String?,
+        needsReview: payload['needs_review'] as bool,
+        livenessPassed: payload['liveness_passed'] as bool,
+        livenessScore: payload['liveness_score'] != null
+            ? (payload['liveness_score'] as num).toDouble()
+            : null,
+        spoofScore: 0.0,
+        timestamp: backendTimestamp,
+        punchTime: backendTimestamp,
+        punchType: 'check_out',
+        fullLogData: fullLogData,
+      );
+      await LocalLogService.instance.updateLogSyncStatus(logId, isSynced: true);
+    } catch (error) {
+      await LocalLogService.instance.updateLogSyncStatus(
+        logId,
+        isSynced: false,
+        syncError: error.toString(),
+      );
+      punch = PunchResult(
+        accepted: true,
+        punchType: 'check_out',
+        employee: EmployeeProfile(
+          id: match.employeeId!,
+          name: employeeName,
+          faceRegistered: true,
+        ),
+      );
+    }
+
+    _lastPunchByEmployee[match.employeeId!] = DateTime.now();
+
+    final hour12 = now.hour % 12 == 0 ? 12 : now.hour % 12;
+    final minutePad = now.minute.toString().padLeft(2, '0');
+    final period = now.hour >= 12 ? 'PM' : 'AM';
+    final timeFormatted = '$hour12:$minutePad $period';
+
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AttendanceResultScreen(
+          success: punch.accepted,
+          title: 'Check-Out Recorded',
+          message: '$employeeName checked out at $timeFormatted.\nTotal Worked: $workedHours',
+          time: DateTime.now(),
+          confidence: match.confidence,
+          primaryLabel: 'Done',
+          primaryIcon: Icons.check_circle_outline,
+          popToFirst: false,
+          showRetry: false,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _resetDetectionState(message: 'Check-out completed for $employeeName');
+  }
+
+  Widget _buildFloatingCheckoutOverlay(_PendingEarlyCheckout pending) {
+    final employeeName = pending.match.employeeName ?? 'Employee';
+    final worked = pending.shiftStatus.workedHoursFormatted;
+    final remaining = pending.shiftStatus.remainingHoursFormatted;
+    final checkIn = pending.shiftStatus.formattedCheckInTime;
+
+    return Positioned(
+      left: 16,
+      right: 16,
+      bottom: 125,
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          padding: const EdgeInsets.all(18),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F172A).withValues(alpha: 0.95),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: const Color(0xFFF59E0B),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFF59E0B).withValues(alpha: 0.35),
+                blurRadius: 20,
+                spreadRadius: 2,
+                offset: const Offset(0, 8),
+              ),
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.4),
+                blurRadius: 16,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.2),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.access_time_filled_rounded,
+                          color: Color(0xFFF59E0B),
+                          size: 14,
+                        ),
+                        const SizedBox(width: 5),
+                        Text(
+                          'Worked: $worked / 8h',
+                          style: const TextStyle(
+                            color: Color(0xFFFBBF24),
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Spacer(),
+                  InkWell(
+                    onTap: _dismissFloatingCheckout,
+                    borderRadius: BorderRadius.circular(20),
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.close_rounded, color: Colors.white70, size: 18),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Want to check out now, $employeeName?',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.2,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Checked in at $checkIn • $remaining left in 8h shift',
+                style: TextStyle(
+                  color: Colors.grey.shade400,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 16),
+              // Floating Action Button
+              Container(
+                height: 50,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFF59E0B), Color(0xFFEA580C)],
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFF59E0B).withValues(alpha: 0.4),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.transparent,
+                    shadowColor: Colors.transparent,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  onPressed: () => _executeCheckoutPunch(pending),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.logout_rounded, color: Colors.white, size: 20),
+                      SizedBox(width: 8),
+                      Text(
+                        'Want to check out now?',
+                        style: TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(title: const Text('Scan Attendance')),
-      body: Column(
+      body: Stack(
         children: [
-          Expanded(
-            child: FaceScanView(
-              camera: _camera,
-              message: _message,
-              faceBounds: _faceBounds,
-              faceImageSize: _faceImageSize,
-              faceOverlays: _faceOverlays,
-              faceReady: _scannerState == _ScannerState.ready || _matchingPercent != null,
-              prompt: _matchingPercent != null
-                  ? 'Verifying identity...'
-                  : (_busy ? 'Processing biometric scan...' : _message),
-              matchingName: _matchingName,
-              matchingPercent: _matchingPercent,
-              progress: _matchingPercent?.round(),
-              target: _matchingPercent != null ? 100 : null,
-              threshold: _matcher.threshold,
-              brightness: _currentBrightness,
-              blinkDetected: _blinkDetected,
-            ),
-          ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: const BorderRadius.vertical(
-                top: Radius.circular(24),
+          Column(
+            children: [
+              Expanded(
+                child: FaceScanView(
+                  camera: _camera,
+                  message: _message,
+                  faceBounds: _faceBounds,
+                  faceImageSize: _faceImageSize,
+                  faceOverlays: _faceOverlays,
+                  faceReady: _scannerState == _ScannerState.ready || _matchingPercent != null,
+                  prompt: _matchingPercent != null
+                      ? 'Verifying identity...'
+                      : (_busy ? 'Processing biometric scan...' : _message),
+                  matchingName: _matchingName,
+                  matchingPercent: _matchingPercent,
+                  progress: _matchingPercent?.round(),
+                  target: _matchingPercent != null ? 100 : null,
+                  threshold: _matcher.threshold,
+                  brightness: _currentBrightness,
+                  blinkDetected: _blinkDetected,
+                ),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -4),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  _message,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.grey.shade700,
-                    fontWeight: FontWeight.w500,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(24),
                   ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.05),
+                      blurRadius: 10,
+                      offset: const Offset(0, -4),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 18),
-                Container(
-                  height: 52,
-                  decoration: BoxDecoration(
-                    gradient: _busy
-                        ? null
-                        : const LinearGradient(
-                            colors: [Color(0xFFEDA672), Color(0xFFE57C38)],
-                            begin: Alignment.centerLeft,
-                            end: Alignment.centerRight,
-                          ),
-                    color: _busy ? Colors.grey.shade300 : null,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: _busy
-                        ? null
-                        : [
-                            BoxShadow(
-                              color: const Color(
-                                0xFFEDA672,
-                              ).withValues(alpha: 0.25),
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                  ),
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _message,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.grey.shade700,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
-                    onPressed: _canScan
-                        ? _scannerState == _ScannerState.paused ||
-                                  _scannerState == _ScannerState.failed
-                              ? () => _resetDetectionState()
-                              : _scan
-                        : null,
-                    child: _busy
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Color(0xFFEDA672),
-                            ),
-                          )
-                        : Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.face, color: Colors.white),
-                              SizedBox(width: 8),
-                              Text(
-                                _scannerState == _ScannerState.paused ||
-                                        _scannerState == _ScannerState.failed
-                                    ? 'Scan Again'
-                                    : 'Scan Now',
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
-                                ),
+                    const SizedBox(height: 18),
+                    Container(
+                      height: 52,
+                      decoration: BoxDecoration(
+                        gradient: _busy
+                            ? null
+                            : const LinearGradient(
+                                colors: [Color(0xFFEDA672), Color(0xFFE57C38)],
+                                begin: Alignment.centerLeft,
+                                end: Alignment.centerRight,
                               ),
-                            ],
+                        color: _busy ? Colors.grey.shade300 : null,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: _busy
+                            ? null
+                            : [
+                                BoxShadow(
+                                  color: const Color(
+                                    0xFFEDA672,
+                                  ).withValues(alpha: 0.25),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                      ),
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.transparent,
+                          shadowColor: Colors.transparent,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
                           ),
-                  ),
+                        ),
+                        onPressed: _canScan
+                            ? _scannerState == _ScannerState.paused ||
+                                      _scannerState == _ScannerState.failed
+                                  ? () => _resetDetectionState()
+                                  : _scan
+                            : null,
+                        child: _busy
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Color(0xFFEDA672),
+                                ),
+                              )
+                            : Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const Icon(Icons.face, color: Colors.white),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    _scannerState == _ScannerState.paused ||
+                                            _scannerState == _ScannerState.failed
+                                        ? 'Scan Again'
+                                        : 'Scan Now',
+                                    style: const TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+
+          // Floating "Want to check out now?" prompt
+          if (_pendingCheckout != null)
+            _buildFloatingCheckoutOverlay(_pendingCheckout!),
         ],
       ),
     );

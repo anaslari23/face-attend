@@ -16,7 +16,7 @@ class FaceScanView extends StatefulWidget {
     this.prompt = 'Look straight and keep your face inside the frame.',
     this.matchingName,
     this.matchingPercent,
-    this.threshold = 0.70,
+    this.threshold = 0.60,
     this.brightness = 120.0,
     this.blinkDetected = false,
     super.key,

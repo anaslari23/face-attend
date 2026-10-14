@@ -163,7 +163,7 @@ class ScannerEmployeeSync {
 
   factory ScannerEmployeeSync.fromJson(Map<String, dynamic> json) {
     return ScannerEmployeeSync(
-      threshold: (json['threshold'] as num? ?? 0.70).toDouble(),
+      threshold: (json['threshold'] as num? ?? 0.60).toDouble(),
       modelVersion:
           json['model_version'] as String? ?? 'arcface-w600k-r50-align-v3',
       employees: (json['employees'] as List<dynamic>? ?? [])

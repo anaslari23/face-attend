@@ -72,12 +72,30 @@ class OdooFaceAttendanceClient {
       '[OdooFaceAttendanceClient] setupScanner Request: ${jsonEncode(requestBody)}',
     );
 
-    final payload = await _post(
-      '/face_attendance/scanner/setup',
-      requestBody,
-      authenticated: false,
-      extraDb: db,
-    );
+    Map<String, dynamic> payload;
+    try {
+      payload = await _post(
+        '/face_attendance/scanner/setup',
+        requestBody,
+        authenticated: false,
+        extraDb: db,
+      );
+    } on FaceAttendanceApiException catch (e) {
+      if (e.statusCode == 403 &&
+          e.message.toLowerCase().contains("can't connect with this setup code")) {
+        print(
+          '[OdooFaceAttendanceClient] Device limit reached on server. Retrying setup without device_try_to_connect...',
+        );
+        payload = await _post(
+          '/face_attendance/scanner/setup',
+          {'setup_code': setupCode},
+          authenticated: false,
+          extraDb: db,
+        );
+      } else {
+        rethrow;
+      }
+    }
 
     print(
       '[OdooFaceAttendanceClient] setupScanner Response: ${jsonEncode(payload)}',
@@ -119,7 +137,7 @@ class OdooFaceAttendanceClient {
       token: payload['token'] as String,
       deviceId: device['device_uid'] as String? ?? deviceId,
       deviceName: device['name'] as String? ?? 'Shared Scanner',
-      generatedDeviceId: generatedDeviceId,
+      generatedDeviceId: generatedDeviceId ?? deviceId,
     );
   }
 
@@ -166,6 +184,7 @@ class OdooFaceAttendanceClient {
     double? spoofScore,
     String? timestamp,
     String? punchTime,
+    String? punchType,
     Map<String, dynamic>? fullLogData,
   }) async {
     final body = <String, dynamic>{
@@ -185,6 +204,9 @@ class OdooFaceAttendanceClient {
       'spoof_score': spoofScore,
       'full_log_data': fullLogData,
     };
+    if (punchType != null) {
+      body['punch_type'] = punchType;
+    }
     if (timestamp != null) {
       body['timestamp'] = timestamp;
     }

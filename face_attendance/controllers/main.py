@@ -155,7 +155,7 @@ class FaceAttendanceController(http.Controller):
             {
                 "device": self._device_payload(device),
                 "model_version": model_version,
-                "threshold": float(self._config("face_attendance.match_threshold", "0.70")),
+                "threshold": float(self._config("face_attendance.match_threshold", "0.60")),
                 "employees": payload,
             }
         )
@@ -247,7 +247,7 @@ class FaceAttendanceController(http.Controller):
         accepted = bool(body.get("accepted"))
         matched_employee_id = body.get("matched_employee_id")
         match_score = float(body.get("match_score") or 0.0)
-        threshold = float(body.get("threshold") or self._config("face_attendance.match_threshold", "0.70"))
+        threshold = float(body.get("threshold") or self._config("face_attendance.match_threshold", "0.60"))
         device_id = body.get("device_id") or device.device_uid
         app_version = body.get("app_version")
         failure_reason = body.get("failure_reason")
@@ -276,12 +276,11 @@ class FaceAttendanceController(http.Controller):
             spoof_score = 0.0
 
         now = fields.Datetime.now()
-        timestamp_val = body.get("timestamp")
+        timestamp_val = body.get("timestamp") or body.get("punch_time")
         if timestamp_val:
             try:
                 if isinstance(timestamp_val, str):
-                    # Replace ISO 'T' and 'Z' to make it compatible with Odoo's datetime parsing
-                    clean_ts = timestamp_val.replace('Z', '').replace('T', ' ')
+                    clean_ts = timestamp_val.replace("Z", "").replace("T", " ")
                     now = fields.Datetime.to_datetime(clean_ts)
                 else:
                     now = fields.Datetime.to_datetime(timestamp_val)
@@ -309,25 +308,29 @@ class FaceAttendanceController(http.Controller):
         if accepted and employee and match_score < threshold and not failure_reason:
             failure_reason = "below_threshold"
 
-        log = request.env["face.attendance.log"].with_user(1).sudo().create(
-            {
-                "employee_id": employee.id if employee else False,
-                "device_uid": device_id,
-                "app_version": app_version,
-                "match_score": match_score,
-                "threshold": threshold,
-                "second_best_confidence": second_best_confidence,
-                "embedding_source": embedding_source,
-                "review_embedding_id": review_embedding_id,
-                "needs_review": needs_review,
-                "liveness_passed": liveness_passed,
-                "liveness_score": liveness_score,
-                "spoof_score": spoof_score,
-                "accepted": log_accepted,
-                "failure_reason": failure_reason,
-                "raw_payload": json.dumps(body),
-            }
-        )
+        punch_type = body.get("punch_type")
+        log_vals = {
+            "employee_id": employee.id if employee else False,
+            "device_uid": device_id,
+            "app_version": app_version,
+            "match_score": match_score,
+            "threshold": threshold,
+            "second_best_confidence": second_best_confidence,
+            "embedding_source": embedding_source,
+            "review_embedding_id": review_embedding_id,
+            "needs_review": needs_review,
+            "liveness_passed": liveness_passed,
+            "liveness_score": liveness_score,
+            "spoof_score": spoof_score,
+            "accepted": log_accepted,
+            "failure_reason": failure_reason,
+            "punch_time": now,
+            "raw_payload": json.dumps(body),
+        }
+        if punch_type in ("check_in", "check_out"):
+            log_vals["punch_type"] = punch_type
+
+        log = request.env["face.attendance.log"].with_user(1).sudo().create(log_vals)
 
         if not log.accepted:
             return self._json_response(

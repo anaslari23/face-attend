@@ -44,7 +44,7 @@ class FaceAttendanceConfig(models.Model):
     _rec_name = "name"
 
     name = fields.Char(required=True, default="Default Face Attendance")
-    confidence_threshold = fields.Float(default=0.70)
+    confidence_threshold = fields.Float(default=0.60)
     liveness_required = fields.Boolean(default=True)
     anti_spoofing_required = fields.Boolean(default=True)
     active = fields.Boolean(default=True)
@@ -190,8 +190,11 @@ class FaceAttendanceLog(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
-            if not vals.get("punch_time") and vals.get("create_date"):
-                vals["punch_time"] = vals["create_date"]
+            if not vals.get("punch_time"):
+                if vals.get("create_date"):
+                    vals["punch_time"] = vals["create_date"]
+                else:
+                    vals["punch_time"] = fields.Datetime.now()
         
         logs = super().create(vals_list)
         for log in logs:
@@ -199,42 +202,67 @@ class FaceAttendanceLog(models.Model):
                 start_of_day = log.punch_time.replace(hour=0, minute=0, second=0, microsecond=0)
                 end_of_day = log.punch_time.replace(hour=23, minute=59, second=59, microsecond=999999)
 
-                last_log = self.env["face.attendance.log"].search([
-                    ("employee_id", "=", log.employee_id.id),
-                    ("punch_time", ">=", start_of_day),
-                    ("punch_time", "<=", end_of_day),
-                    ("id", "!=", log.id),
-                    ("punch_type", "!=", False)
-                ], limit=1, order="punch_time desc")
+                punch_type = log.punch_type
+                if not punch_type:
+                    last_log = self.env["face.attendance.log"].search([
+                        ("employee_id", "=", log.employee_id.id),
+                        ("punch_time", ">=", start_of_day),
+                        ("punch_time", "<=", end_of_day),
+                        ("id", "!=", log.id),
+                        ("punch_type", "!=", False)
+                    ], limit=1, order="punch_time desc")
 
-                if not last_log:
-                    punch_type = "check_in"
-                elif last_log.punch_type == "check_in":
-                    punch_type = "check_out"
-                else:
-                    punch_type = "check_in"
+                    if not last_log:
+                        punch_type = "check_in"
+                    elif last_log.punch_type == "check_in":
+                        punch_type = "check_out"
+                    else:
+                        punch_type = "check_in"
 
-                daily_attendance = self.env["hr.attendance"].search([
-                    ("employee_id", "=", log.employee_id.id),
-                    ("check_in", ">=", start_of_day),
-                    ("check_in", "<=", end_of_day)
-                ], limit=1, order="check_in asc")
+                log.punch_type = punch_type
 
                 is_sync = False
-                if not daily_attendance:
-                    daily_attendance = self.env["hr.attendance"].create({
-                        "employee_id": log.employee_id.id,
-                        "check_in": log.punch_time,
-                        "recognition_confidence": log.match_score,
-                        "recognition_method": "face",
-                        "face_device_uid": log.device_uid,
-                        "face_log_id": log.id,
-                        "in_mode": "pi_smart_punch",
-                    })
-                    is_sync = True
+                if punch_type == "check_out":
+                    open_attendance = self.env["hr.attendance"].search([
+                        ("employee_id", "=", log.employee_id.id),
+                        ("check_out", "=", False),
+                    ], limit=1, order="check_in desc")
 
-                log.attendance_id = daily_attendance.id if daily_attendance else False
-                log.punch_type = punch_type
+                    if not open_attendance:
+                        open_attendance = self.env["hr.attendance"].search([
+                            ("employee_id", "=", log.employee_id.id),
+                            ("check_in", ">=", start_of_day),
+                            ("check_in", "<=", end_of_day),
+                        ], limit=1, order="check_in desc")
+
+                    if open_attendance:
+                        open_attendance.with_context(bypass_fieldpro_block=True).write({
+                            "check_out": log.punch_time,
+                            "out_mode": "pi_smart_punch",
+                        })
+                        log.attendance_id = open_attendance.id
+                        is_sync = True
+                else:
+                    open_attendance = self.env["hr.attendance"].search([
+                        ("employee_id", "=", log.employee_id.id),
+                        ("check_out", "=", False),
+                    ], limit=1, order="check_in desc")
+
+                    if not open_attendance:
+                        daily_attendance = self.env["hr.attendance"].create({
+                            "employee_id": log.employee_id.id,
+                            "check_in": log.punch_time,
+                            "recognition_confidence": log.match_score,
+                            "recognition_method": "face",
+                            "face_device_uid": log.device_uid,
+                            "face_log_id": log.id,
+                            "in_mode": "pi_smart_punch",
+                        })
+                        log.attendance_id = daily_attendance.id
+                        is_sync = True
+                    else:
+                        log.attendance_id = open_attendance.id
+
                 if is_sync:
                     log.is_sync = True
         return logs
